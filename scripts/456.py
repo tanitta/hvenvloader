@@ -3,7 +3,7 @@ import os
 import hou
 
 def load_venv_site_packages():
-    print("hrye")
+    print("[hrye] Loading venv site_packages...")
     venvroot = hou.text.expandString("$JOB" + '/.venv')
     site_packages_path = hou.text.expandString(venvroot + '/Lib/site-packages')
 
@@ -16,5 +16,5 @@ def load_venv_site_packages():
     hou.session.venv_site_packages_path = site_packages_path
     sys.path.append(site_packages_path)
     print(sys.path)
-
+    print("[hrye] Finish site_packages loading successflly.")
 load_venv_site_packages()

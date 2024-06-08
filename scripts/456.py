@@ -5,7 +5,7 @@ import hou
 def load_venv_site_packages():
     print("hrye")
     venvroot = hou.text.expandString("$JOB" + '/.venv')
-    site_packages_path = hou.text.expandString(venvroot + '/site-packages')
+    site_packages_path = hou.text.expandString(venvroot + '/Lib/site-packages')
 
     # Clean up path
     if not hasattr(hou.session, "venv_site_packages_path"):

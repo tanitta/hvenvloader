@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mainMenu>
+  <menuBar>
+    <subMenu id="assets_menu">
+        <separatorItem/>
+
+        <subMenu id="rye">
+        <label>Rye</label>
+
+        <scriptItem>
+            <label>Init</label>
+            <scriptPath>$HRYE/scripts/rye_commands.py</scriptPath>
+            <scriptArgs>init</scriptArgs>
+        </scriptItem>
+
+        <scriptItem>
+            <label>Add Package</label>
+            <scriptPath>$HRYE/scripts/rye_commands.py</scriptPath>
+            <scriptArgs>add</scriptArgs>
+        </scriptItem>
+
+        <scriptItem>
+            <label>Sync</label>
+            <scriptPath>$HRYE/scripts/rye_commands.py</scriptPath>
+            <scriptArgs>sync</scriptArgs>
+        </scriptItem>
+        </subMenu>
+    </subMenu>
+  </menuBar>
+</mainMenu>

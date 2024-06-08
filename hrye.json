@@ -1,0 +1,8 @@
+{
+	"path": "$HRYE",
+    "env": [
+        {
+            "HRYE": "$HOUDINI_PACKAGE_PATH/hrye"
+        }
+    ]
+}

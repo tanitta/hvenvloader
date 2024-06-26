@@ -16,7 +16,6 @@ def load_venv_site_packages():
     # Set venv site-packages path
     hou.session.venv_site_packages_path = site_packages_path
     sys.path.append(site_packages_path)
-    print(sys.path)
     print("[{package_name}] Finish site_packages loading successflly.".format(package_name=package_name))
 
 load_venv_site_packages()
@@ -40,17 +39,18 @@ def load_houdini_packages():
     package_dirs = filter(lambda d: is_houdini_package(d), ds)
     package_jsons = map(lambda d: get_package_json(d), package_dirs)
 
-    for json in package_jsons:
+    for json_path in package_jsons:
         json_original = ''
         json_modified = ''
-        with open(json) as f:
+        with open(json_path) as f:
             json_original = f.read()
         json_modified = json_original.replace('$HOUDINI_PACKAGE_PATH', site_packages_path)
         json_path_temp = hou.text.expandString("$TEMP" + '/hvenvloadertmp.json')
         with open(json_path_temp, mode='w') as f:
             f.write(json_modified)
         hou.ui.loadPackage(json_path_temp)
-    print(list(package_jsons))
-    print("[{package_name}] Finish loading of houdini packages successflly.".format(package_name=package_name))
+        hpname = os.path.splitext(os.path.basename(json_path))[0] 
+        print("[{package_name}] Finish loading houdini package: {hpname}".format(package_name=package_name, hpname=hpname))
+    print("[{package_name}] Finish loading all houdini packages successflly.".format(package_name=package_name))
 
 load_houdini_packages()

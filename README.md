@@ -1,5 +1,7 @@
 # Houdini venv Loader
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/tanitta/hvenvloader/blob/main/LICENSE)
+
 ## Description
 
 This is a Houdini Package designed for handling Houdini within a Python project workflow, and offers the following features:

@@ -1,0 +1,8 @@
+{
+	"path": "$HVENVLOADER",
+    "env": [
+        {
+            "HVENVLOADER": "$HOUDINI_PACKAGE_PATH/hvenvloader"
+        }
+    ]
+}

@@ -4,7 +4,7 @@
 
 ## Description
 
-This is a Houdini package designed for use within a Python project workflow, providing the following functionalities:
+This is a Houdini package for use within a Python project workflow, providing the following functionalities:
 - Loading Python packages from the Python virtual environment `.venv` into Houdini within the Project directory.
 - Loading [Houdini Package](https://www.sidefx.com/docs/houdini/ref/plugins.html) included in the Python Package from `.venv` into Houdini.
 
@@ -29,4 +29,4 @@ When using Houdini packages loaded from .venv within a hip file, you may see the
 
 ![image](https://github.com/tanitta/hvenvloader/assets/1937287/32d428d3-7dfe-4fbf-bf19-34fc7a68961a)
 
-This occurs because the dependency check for the HDA is performed before the necessary Houdini Package HDAs are dynamically loaded by hvenvloader. Therefore, you can ignore the warning as the file will function correctly.
+This occurs because the dependency check for the HDA is performed before the necessary Houdini Package HDAs are dynamically loaded by hvenvloader. Therefore, you can ignore the warning as the file will function correctly. (Consider setting the environment variable [HOUDINI_DISABLE_FILE_LOAD_WARNINGS](https://www.sidefx.com/docs/houdini/ref/env) to suppress the warning dialog.)

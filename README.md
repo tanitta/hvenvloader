@@ -4,7 +4,7 @@
 
 ## Description
 
-This is a Houdini package designed for use within a Python project workflow, providing the following functionalities:
+This is a Houdini package for use within a Python project workflow, providing the following functionalities:
 - Loading Python packages from the Python virtual environment `.venv` into Houdini within the Project directory.
 - Loading [Houdini Package](https://www.sidefx.com/docs/houdini/ref/plugins.html) included in the Python Package from `.venv` into Houdini.
 

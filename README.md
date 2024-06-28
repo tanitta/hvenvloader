@@ -29,4 +29,4 @@ When using Houdini packages loaded from .venv within a hip file, you may see the
 
 ![image](https://github.com/tanitta/hvenvloader/assets/1937287/32d428d3-7dfe-4fbf-bf19-34fc7a68961a)
 
-This occurs because the dependency check for the HDA is performed before the necessary Houdini Package HDAs are dynamically loaded by hvenvloader. Therefore, you can ignore the warning as the file will function correctly.
+This occurs because the dependency check for the HDA is performed before the necessary Houdini Package HDAs are dynamically loaded by hvenvloader. Therefore, you can ignore the warning as the file will function correctly. (Consider setting the environment variable [HOUDINI_DISABLE_FILE_LOAD_WARNINGS](https://www.sidefx.com/docs/houdini/ref/env) to suppress the warning dialog.)

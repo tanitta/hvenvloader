@@ -10,7 +10,7 @@ def remove_modules_in_directory(directory):
                          if hasattr(module, '__file__') and module.__file__ and os.path.abspath(module.__file__).startswith(directory)]
     for key, module in modules_to_remove:
         del sys.modules[key]
-        print(f"Removed {key}")
+        # print(f"Removed {key}")
 
 def unload_python_packages():
     if not hasattr(hou.session, "venv_site_packages_path"):
@@ -22,16 +22,16 @@ def unload_python_packages():
     site_packages_dir = hou.text.expandString(venvroot + '/Lib/site-packages')
     remove_modules_in_directory(site_packages_dir)
 
-    print("[{message_header}] Unload Python Packages.".format(message_header=message_header))
+    # print("[{message_header}] Unload Python Packages.".format(message_header=message_header))
 
 def load_python_packages():
-    print("[{message_header}] Loading venv site_packages...".format(message_header=message_header))
+    # print("[{message_header}] Loading venv site_packages...".format(message_header=message_header))
     venvroot = hou.text.expandString("$JOB" + '/.venv')
     hou.session.venv_site_packages_path = hou.text.expandString(venvroot + '/Lib/site-packages')
     if not os.path.isdir(hou.session.venv_site_packages_path):
         hou.session.venv_site_packages_path = ""
     sys.path.append(hou.session.venv_site_packages_path)
-    print("[{message_header}] Finish site_packages loading successflly.".format(message_header=message_header))
+    # print("[{message_header}] Finish site_packages loading successflly.".format(message_header=message_header))
 
 import glob
 from pathlib import Path
@@ -49,17 +49,17 @@ def unload_houdini_packages():
         setattr(hou.session, "venv_houdini_package_json_paths", {})
     for package_name in hou.session.venv_houdini_package_json_paths:
         package_path = hou.session.venv_houdini_package_json_paths[package_name]
-        print("unload:{}".format(package_name))
-        print(package_path)
+        # print("unload:{}".format(package_name))
+        # print(package_path)
         hou.ui.unloadPackage(package_path)
     hou.session.venv_houdini_package_json_paths = {}
 
-    print("[{message_header}] Unload Houdini Packages.".format(message_header=message_header))
+    # print("[{message_header}] Unload Houdini Packages.".format(message_header=message_header))
 def load_houdini_packages():
     if not hasattr(hou.session, "venv_houdini_package_json_paths"):
         setattr(hou.session, "venv_houdini_package_json_paths", {})
 
-    print("[{message_header}] Loading venv houdini packages...".format(message_header=message_header))
+    # print("[{message_header}] Loading venv houdini packages...".format(message_header=message_header))
     venvroot = hou.text.expandString("$JOB" + '/.venv')
     site_packages_path = hou.text.expandString(venvroot + '/Lib/site-packages')
     ds = filter(lambda d: os.path.isdir(d), glob.glob(site_packages_path + '/*'))
@@ -78,8 +78,8 @@ def load_houdini_packages():
             f.write(json_modified)
         hou.ui.loadPackage(json_path_temp)
         hou.session.venv_houdini_package_json_paths[package_name] = json_path_temp
-        print("[{message_header}] Finish loading houdini package: {package_name}".format(message_header=message_header, package_name=package_name))
-    print("[{message_header}] Finish loading all houdini packages successflly.".format(message_header=message_header))
+        # print("[{message_header}] Finish loading houdini package: {package_name}".format(message_header=message_header, package_name=package_name))
+    # print("[{message_header}] Finish loading all houdini packages successflly.".format(message_header=message_header))
 
 def hvenvloader_scene_event_callback(event_type):
     if event_type == hou.hipFileEventType.BeforeSave or event_type == hou.hipFileEventType.BeforeClear:

@@ -12,8 +12,13 @@
   <tool name="generate_launcher" label="Generate Launcher" icon="PLASMA_App">
     <script scriptType="python"><![CDATA[from pathlib import Path
 import shutil
+import platform
 
 launcher_name = "houdini.sh"
+os_name = platform.system()
+if os_name == "Windows":
+    launcher_name = "houdini.bat"
+    
 package_path = Path(hou.getenv("HVENVLOADER"))
 template_path = package_path / launcher_name
 

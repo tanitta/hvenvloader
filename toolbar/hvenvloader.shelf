@@ -10,6 +10,16 @@
   </toolshelf>
 
   <tool name="generate_launcher" label="Generate Launcher" icon="PLASMA_App">
-    <script scriptType="python"><![CDATA[]]></script>
+    <script scriptType="python"><![CDATA[from pathlib import Path
+import shutil
+
+launcher_name = "houdini.sh"
+package_path = Path(hou.getenv("HVENVLOADER"))
+template_path = package_path / launcher_name
+
+job_path = Path(hou.getenv("JOB"))
+new_launcher_path = job_path / launcher_name
+
+shutil.copy(template_path, new_launcher_path)]]></script>
   </tool>
 </shelfDocument>

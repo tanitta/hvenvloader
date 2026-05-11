@@ -6,25 +6,70 @@
  a single file. -->
 
   <toolshelf name="hvenvloader" label="venv">
-    <memberTool name="generate_launcher"/>
+    <memberTool name="init"/>
   </toolshelf>
 
-  <tool name="generate_launcher" label="Generate Launcher" icon="PLASMA_App">
+  <tool name="init" label="Init Project" icon="MISC_python">
     <script scriptType="python"><![CDATA[from pathlib import Path
 import shutil
 import platform
 
-launcher_name = "houdini.sh"
-os_name = platform.system()
-if os_name == "Windows":
-    launcher_name = "houdini.bat"
+root_path = Path(hou.getenv("JOB"))
+
+def generate_launcher(root_path):
+    launcher_name = "houdini.sh"
+    if platform.system() == "Windows":
+        launcher_name = "houdini.bat"
     
-package_path = Path(hou.getenv("HVENVLOADER"))
-template_path = package_path / launcher_name
+    package_path = Path(hou.getenv("HVENVLOADER"))
+    template_path = package_path / launcher_name
 
-job_path = Path(hou.getenv("JOB"))
-new_launcher_path = job_path / launcher_name
+    text = template_path.read_text(encoding="utf-8")
 
-shutil.copy(template_path, new_launcher_path)]]></script>
+    # houdini_exe = Path(hou.getenv("HFS")) / "bin\houdini.exe"
+    houdini_exe = sys.executable
+
+    text = text.replace(
+        "@HOUDINI_EXE@",
+        str(houdini_exe)
+    )
+    
+    user_pref_dir = hou.getenv("HOUDINI_USER_PREF_DIR")
+    text = text.replace("@HOUDINI_USER_PREF_DIR@", user_pref_dir)
+
+    new_launcher_path = root_path / launcher_name
+    new_launcher_path.write_text(text, encoding="utf-8")
+
+import sys
+import os
+import subprocess
+
+def write_python_version_to_file(output_path):
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    file_path = os.path.join(output_path, ".python-version")
+    
+    try:
+        with open(file_path, "w") as file:
+            file.write(python_version)
+        print(f"Python version {python_version} written to {file_path}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+# write_python_version_to_file(root_path)
+def py_ver():
+    major = sys.version_info.major
+    minor = sys.version_info.minor
+    return f"{major}.{minor}"
+
+def init_pythonproject(root_path):
+    subprocess.run(
+        ["uv", "init", "-p", py_ver()],
+        cwd=str(root_path),
+        check=True,
+    )
+    subprocess.run(["uv", "sync"], cwd=str(root_path), check=True)
+
+generate_launcher(root_path)
+init_pythonproject(root_path)]]></script>
   </tool>
 </shelfDocument>

@@ -59,6 +59,77 @@ If you do not use the shelf tool, copy the appropriate launcher (`houdini.bat` o
 
 When Houdini starts through the launcher, packages installed in `.venv` are available in Houdini's Python environment, and Houdini package files provided by those packages can be loaded.
 
+## Creating hvenvloader-compatible Houdini Packages
+
+hvenvloader can load Houdini Package `.json` files that are distributed inside Python packages installed in the project `.venv`. See [HoudiniUnityAnimationClip](https://github.com/tanitta/HoudiniUnityAnimationClip) for a working package layout.
+
+The important convention is that the Python package directory and Houdini Package JSON file must have the same name. The launcher scans each directory in `.venv` `site-packages`, and when it finds `<package>/<package>.json`, it copies that JSON file to the top level of `site-packages` so Houdini can discover it through `HOUDINI_PACKAGE_DIR`.
+
+Use this layout as a starting point:
+
+```text
+my-houdini-package/
+  pyproject.toml
+  README.md
+  src/
+    MyHoudiniPackage/
+      __init__.py
+      MyHoudiniPackage.json
+      otls/
+        my_asset.hda
+```
+
+`MyHoudiniPackage.json` should point Houdini back to the installed Python package directory. For example:
+
+```json
+{
+  "hpath": "$MYHOUDINIPACKAGE",
+  "env": [
+    {
+      "MYHOUDINIPACKAGE": "$HOUDINI_PACKAGE_PATH/MyHoudiniPackage"
+    }
+  ]
+}
+```
+
+With this package file, Houdini resolves the installed package directory as a Houdini path, so standard Houdini subdirectories such as `otls`, `scripts`, `toolbar`, and `python_panels` can live under `src/MyHoudiniPackage/`.
+
+Include the Houdini Package JSON and Houdini assets as Python package data. A minimal `pyproject.toml` using setuptools looks like this:
+
+```toml
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "MyHoudiniPackage"
+version = "0.1.0"
+description = "My hvenvloader-compatible Houdini package."
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+MyHoudiniPackage = [
+  "MyHoudiniPackage.json",
+  "otls/*",
+]
+```
+
+After publishing the package or making it available from a Git repository, add it to the Houdini project from the project root:
+
+```shell
+uv add "MyHoudiniPackage @ git+https://github.com/owner/MyHoudiniPackage.git"
+uv sync
+```
+
+Then restart Houdini through the generated project launcher (`houdini.bat` or `houdini.sh`). On startup, hvenvloader makes the Python package importable and copies `MyHoudiniPackage.json` into the package search directory for Houdini.
+
 ## Note
 
 When using Houdini packages loaded from `.venv` within a hip file, you may see the following warning about HDAs when opening the file.

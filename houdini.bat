@@ -12,12 +12,10 @@ set "HOUDINI_USER_PREF_DIR=@HOUDINI_USER_PREF_DIR@"
 set "SCRIPT_DIR=%~dp0"
 set "HOUDINI_PACKAGE_DIR=%SCRIPT_DIR%\.venv\Lib\site-packages"
 
-REM Copy .json from houdini package.
+REM Copy hpackage.json from Houdini Python packages.
 for /D %%d in ("%HOUDINI_PACKAGE_DIR%\*") do (
-    set "last_dir_name=%%~nxd"
-    set "json_file=%%d\%%~nxd.json"
-    if exist "%%d\%%~nxd.json" (
-        copy "%%d\%%~nxd.json" "%HOUDINI_PACKAGE_DIR%\"
+    if exist "%%d\hpackage.json" (
+        copy /Y "%%d\hpackage.json" "%HOUDINI_PACKAGE_DIR%\%%~nxd.json" > nul
     )
 )
 

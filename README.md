@@ -46,7 +46,7 @@ When the launcher starts Houdini, it:
 
 1. Finds the project's `.venv` relative to the launcher file.
 2. Sets `HOUDINI_PACKAGE_DIR` and `PYTHONPATH` to the `.venv` `site-packages` directory.
-3. Copies Houdini package `.json` files from installed Python packages into `site-packages` so Houdini can discover them.
+3. Copies `hpackage.json` files from installed Python packages into `site-packages` as Houdini package `.json` files so Houdini can discover them.
 4. Starts Houdini with the project virtual environment available.
 
 If you do not use the shelf tool, copy the appropriate launcher (`houdini.bat` or `houdini.sh`) into your project root manually and edit the Houdini executable path and `HOUDINI_USER_PREF_DIR` values for your environment.
@@ -61,9 +61,9 @@ When Houdini starts through the launcher, packages installed in `.venv` are avai
 
 ## Creating hvenvloader-compatible Houdini Packages
 
-hvenvloader can load Houdini Package `.json` files that are distributed inside Python packages installed in the project `.venv`. See [HoudiniUnityAnimationClip](https://github.com/tanitta/HoudiniUnityAnimationClip) for a working package layout.
+hvenvloader can load Houdini Package `.json` files that are distributed inside Python packages installed in the project `.venv`. See [HoudiniUnityAnimationClip](https://github.com/tanitta/HoudiniUnityAnimationClip) for a practical example of a Houdini asset package distributed as a Python package.
 
-The important convention is that the Python package directory and Houdini Package JSON file must have the same name. The launcher scans each directory in `.venv` `site-packages`, and when it finds `<package>/<package>.json`, it copies that JSON file to the top level of `site-packages` so Houdini can discover it through `HOUDINI_PACKAGE_DIR`.
+The important convention is that each Python import package that provides a Houdini Package contains a file named `hpackage.json`. The launcher scans each directory in `.venv` `site-packages`, and when it finds `<package>/hpackage.json`, it copies that JSON file to the top level of `site-packages` as `<package>.json` so Houdini can discover it through `HOUDINI_PACKAGE_DIR`.
 
 Use this layout as a starting point:
 
@@ -74,12 +74,12 @@ my-houdini-package/
   src/
     MyHoudiniPackage/
       __init__.py
-      MyHoudiniPackage.json
+      hpackage.json
       otls/
         my_asset.hda
 ```
 
-`MyHoudiniPackage.json` should point Houdini back to the installed Python package directory. For example:
+`hpackage.json` should point Houdini back to the installed Python package directory. For example:
 
 ```json
 {
@@ -116,8 +116,11 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 MyHoudiniPackage = [
-  "MyHoudiniPackage.json",
-  "otls/*",
+  "hpackage.json",
+  "otls/**/*",
+  "scripts/**/*",
+  "toolbar/**/*",
+  "python_panels/**/*",
 ]
 ```
 
@@ -128,7 +131,7 @@ uv add "MyHoudiniPackage @ git+https://github.com/owner/MyHoudiniPackage.git"
 uv sync
 ```
 
-Then restart Houdini through the generated project launcher (`houdini.bat` or `houdini.sh`). On startup, hvenvloader makes the Python package importable and copies `MyHoudiniPackage.json` into the package search directory for Houdini.
+Then restart Houdini through the generated project launcher (`houdini.bat` or `houdini.sh`). On startup, hvenvloader makes the Python package importable and copies `hpackage.json` into the package search directory for Houdini as `MyHoudiniPackage.json`.
 
 ## Note
 

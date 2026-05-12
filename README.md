@@ -38,7 +38,7 @@ The generated launcher is part of the project. Keep it next to the project's `.v
 
 - `venv > Init Project` runs `uv init`, `uv sync`, and writes the project launcher.
 - `venv > Create Houdini Package` opens a dialog for creating a Python package that contains a Houdini Package JSON and standard Houdini asset directories.
-- `venv > uv` opens a small UI for `uv init`, `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv tree`, and launcher generation.
+- `venv > uv` opens a small UI for `uv init`, `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv tree`, and launcher generation. It also supports adding local packages and `uv add --editable`.
 
 ## Launcher Behavior
 
@@ -79,6 +79,8 @@ When Houdini starts through the normal shortcut, Python packages installed in `$
 
 hvenvloader can load Houdini Package `.json` files that are distributed inside Python packages installed in the project `.venv`. See [HoudiniUnityAnimationClip](https://github.com/tanitta/HoudiniUnityAnimationClip) for a practical example of a Houdini asset package distributed as a Python package.
 
+The easiest way to start is to run `venv > Create Houdini Package` in Houdini. The shelf tool opens a dialog where you can choose the save directory, project name, import package name, Houdini environment variable name, Python requirement, and standard Houdini directories to include. It then creates the Python package layout, `pyproject.toml`, and `hpackage.json` for you.
+
 The important convention is that each Python import package that provides a Houdini Package contains a file named `hpackage.json`. The launcher scans each directory in `.venv` `site-packages`, and when it finds `<package>/hpackage.json`, it copies that JSON file to the top level of `site-packages` as `<package>.json` so Houdini can discover it through `HOUDINI_PACKAGE_DIR`.
 
 Use this layout as a starting point:
@@ -95,7 +97,7 @@ my-houdini-package/
         my_asset.hda
 ```
 
-You can create this structure from Houdini with `venv > Create Houdini Package`.
+You can also create this structure manually if you prefer not to use the shelf tool.
 
 `hpackage.json` should point Houdini back to the installed Python package directory. For example:
 

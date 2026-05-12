@@ -1,6 +1,7 @@
 import json
 import platform
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -127,6 +128,10 @@ def run_uv_checked(args, cwd):
         output = (result.stdout or "") + (result.stderr or "")
         raise RuntimeError(output.strip() or "uv command failed.")
     return result
+
+
+def _format_command(args):
+    return " ".join(shlex.quote(str(arg)) for arg in args)
 
 
 def init_python_project(root_path):
@@ -471,15 +476,20 @@ def uv_tool():
             package_layout = QtWidgets.QGridLayout(package_group)
 
             self.package_edit = QtWidgets.QLineEdit()
-            self.package_edit.setPlaceholderText("Package name or requirement")
+            self.package_edit.setPlaceholderText("Package name, requirement, or local path")
+            local_button = QtWidgets.QPushButton("Local...")
+            local_button.clicked.connect(self._browse_package_path)
             add_button = QtWidgets.QPushButton("Install package (uv add)")
             add_button.clicked.connect(self._add)
             remove_button = QtWidgets.QPushButton("Remove package (uv remove)")
             remove_button.clicked.connect(self._remove)
+            self.editable_check = QtWidgets.QCheckBox("Install as editable (--editable)")
             package_layout.addWidget(QtWidgets.QLabel("Package"), 0, 0)
             package_layout.addWidget(self.package_edit, 0, 1)
-            package_layout.addWidget(add_button, 0, 2)
-            package_layout.addWidget(remove_button, 0, 3)
+            package_layout.addWidget(local_button, 0, 2)
+            package_layout.addWidget(self.editable_check, 1, 1)
+            package_layout.addWidget(add_button, 1, 2)
+            package_layout.addWidget(remove_button, 1, 3)
 
             package_layout.setColumnStretch(1, 1)
             layout.addWidget(package_group)
@@ -504,6 +514,29 @@ def uv_tool():
         def _project_root(self):
             return Path(self.root_edit.text())
 
+        def _browse_package_path(self):
+            selected = QtWidgets.QFileDialog.getExistingDirectory(
+                self,
+                "Select Local Package Directory",
+                str(self._project_root()),
+            )
+            if selected:
+                self.package_edit.setText(self._package_path_text(Path(selected)))
+
+        def _package_path_text(self, package_path):
+            root = self._project_root()
+            try:
+                relative_path = package_path.resolve().relative_to(root.resolve())
+            except ValueError:
+                return str(package_path)
+
+            text = relative_path.as_posix()
+            if text == ".":
+                return "."
+            if not text.startswith("."):
+                text = "./" + text
+            return text
+
         def _append_output(self, text):
             self.output_edit.appendPlainText(text.rstrip())
             self.output_edit.verticalScrollBar().setValue(
@@ -512,7 +545,7 @@ def uv_tool():
 
         def _run(self, args):
             root = self._project_root()
-            self._append_output("$ uv {}".format(" ".join(args)))
+            self._append_output("$ uv {}".format(_format_command(args)))
             try:
                 result = run_uv(args, root)
             except Exception as exc:
@@ -533,7 +566,11 @@ def uv_tool():
             if not package:
                 QtWidgets.QMessageBox.warning(self, "uv", "Package requirement is required.")
                 return
-            self._run(["add", package])
+            args = ["add"]
+            if self.editable_check.isChecked():
+                args.append("--editable")
+            args.append(package)
+            self._run(args)
 
         def _remove(self):
             package = self.package_edit.text().strip()

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shelfDocument>
+  <!-- This file contains definitions of shelves, toolbars, and tools.
+ It should not be hand-edited when it is being used by the application.
+ Note, that two definitions of the same element are not allowed in
+ a single file. -->
+
+  <toolshelf name="hvenvloader" label="venv">
+    <memberTool name="init"/>
+    <memberTool name="create_houdini_package"/>
+    <memberTool name="uv"/>
+  </toolshelf>
+
+  <tool name="init" label="Init Project" icon="MISC_python">
+    <script scriptType="python"><![CDATA[from hvenvloader.tools import init_project_tool
+init_project_tool()]]></script>
+  </tool>
+
+  <tool name="create_houdini_package" label="Create Houdini Package" icon="MISC_python">
+    <script scriptType="python"><![CDATA[from hvenvloader.tools import create_houdini_package_tool
+create_houdini_package_tool()]]></script>
+  </tool>
+
+  <tool name="uv" label="uv" icon="MISC_python">
+    <script scriptType="python"><![CDATA[from hvenvloader.tools import uv_tool
+uv_tool()]]></script>
+  </tool>
+</shelfDocument>

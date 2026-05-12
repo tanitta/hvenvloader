@@ -1,99 +1,147 @@
-import sys
 import os
-import hou
-
-message_header = 'hvenvloader'
-
-def remove_modules_in_directory(directory):
-    directory = os.path.abspath(directory)
-    modules_to_remove = [(key, module) for key, module in sys.modules.items() 
-                         if hasattr(module, '__file__') and module.__file__ and os.path.abspath(module.__file__).startswith(directory)]
-    for key, module in modules_to_remove:
-        del sys.modules[key]
-        # print(f"Removed {key}")
-
-def unload_python_packages():
-    if not hasattr(hou.session, "venv_site_packages_path"):
-        setattr(hou.session, "venv_site_packages_path", "")
-    sys.path = list(filter(lambda path: path != hou.session.venv_site_packages_path, sys.path))
-    hou.session.venv_site_packages_path = ""
-
-    venvroot = hou.text.expandString("$JOB" + '/.venv')
-    site_packages_dir = hou.text.expandString(venvroot + '/Lib/site-packages')
-    remove_modules_in_directory(site_packages_dir)
-
-    # print("[{message_header}] Unload Python Packages.".format(message_header=message_header))
-
-def load_python_packages():
-    # print("[{message_header}] Loading venv site_packages...".format(message_header=message_header))
-    venvroot = hou.text.expandString("$JOB" + '/.venv')
-    hou.session.venv_site_packages_path = hou.text.expandString(venvroot + '/Lib/site-packages')
-    if not os.path.isdir(hou.session.venv_site_packages_path):
-        hou.session.venv_site_packages_path = ""
-    sys.path.append(hou.session.venv_site_packages_path)
-    # print("[{message_header}] Finish site_packages loading successflly.".format(message_header=message_header))
-
-import glob
+import sys
 from pathlib import Path
 
-def get_package_json(dir_path):
-    dir_basename = os.path.basename(dir_path)
-    return dir_path + '/' + dir_basename + '.json'
+import hou
 
-def is_houdini_package(dir_path):
-    json_path = get_package_json(dir_path)
-    return os.path.isfile(json_path)
 
-def unload_houdini_packages():
-    if not hasattr(hou.session, "venv_houdini_package_json_paths"):
-        setattr(hou.session, "venv_houdini_package_json_paths", {})
-    for package_name in hou.session.venv_houdini_package_json_paths:
-        package_path = hou.session.venv_houdini_package_json_paths[package_name]
-        # print("unload:{}".format(package_name))
-        # print(package_path)
-        hou.ui.unloadPackage(package_path)
-    hou.session.venv_houdini_package_json_paths = {}
+MESSAGE_HEADER = "hvenvloader"
+SESSION_SITE_PACKAGES_ATTR = "hvenvloader_venv_site_packages_path"
 
-    # print("[{message_header}] Unload Houdini Packages.".format(message_header=message_header))
-def load_houdini_packages():
-    if not hasattr(hou.session, "venv_houdini_package_json_paths"):
-        setattr(hou.session, "venv_houdini_package_json_paths", {})
 
-    # print("[{message_header}] Loading venv houdini packages...".format(message_header=message_header))
-    venvroot = hou.text.expandString("$JOB" + '/.venv')
-    site_packages_path = hou.text.expandString(venvroot + '/Lib/site-packages')
-    ds = filter(lambda d: os.path.isdir(d), glob.glob(site_packages_path + '/*'))
-    package_dirs = filter(lambda d: is_houdini_package(d), ds)
-    package_paths = list(map(lambda d: get_package_json(d), package_dirs))
+def _is_launcher_mode():
+    return os.environ.get("HVENVLOADER_LAUNCHER") == "1"
 
-    for json_path in package_paths:
-        json_original = ''
-        json_modified = ''
-        with open(json_path) as f:
-            json_original = f.read()
-        json_modified = json_original.replace('$HOUDINI_PACKAGE_PATH', site_packages_path)
-        package_name = os.path.splitext(os.path.basename(json_path))[0] 
-        json_path_temp = hou.text.expandString("$TEMP/{}.json".format(package_name))
-        with open(json_path_temp, mode='w') as f:
-            f.write(json_modified)
-        hou.ui.loadPackage(json_path_temp)
-        hou.session.venv_houdini_package_json_paths[package_name] = json_path_temp
-        # print("[{message_header}] Finish loading houdini package: {package_name}".format(message_header=message_header, package_name=package_name))
-    # print("[{message_header}] Finish loading all houdini packages successflly.".format(message_header=message_header))
+
+def _normalize_path(path):
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _same_path(left, right):
+    try:
+        return _normalize_path(left) == _normalize_path(right)
+    except (TypeError, ValueError):
+        return left == right
+
+
+def _remove_modules_in_directory(directory):
+    directory = _normalize_path(directory)
+    prefix = directory + os.sep
+    modules_to_remove = []
+
+    for name, module in list(sys.modules.items()):
+        module_file = getattr(module, "__file__", None)
+        if not module_file:
+            continue
+
+        try:
+            module_file = _normalize_path(module_file)
+        except (TypeError, ValueError):
+            continue
+
+        if module_file == directory or module_file.startswith(prefix):
+            modules_to_remove.append(name)
+
+    for name in modules_to_remove:
+        del sys.modules[name]
+
+
+def _venv_root():
+    job = hou.getenv("JOB")
+    if not job:
+        return None
+
+    expanded_job = hou.text.expandString("$JOB")
+    if not expanded_job:
+        return None
+
+    return Path(expanded_job) / ".venv"
+
+
+def _site_packages_candidates(venv_root):
+    version = "{}.{}".format(sys.version_info.major, sys.version_info.minor)
+    return [
+        venv_root / "Lib" / "site-packages",
+        venv_root / "lib" / "python{}".format(version) / "site-packages",
+        venv_root / "lib" / "site-packages",
+    ]
+
+
+def _find_site_packages_path():
+    venv_root = _venv_root()
+    if not venv_root:
+        return ""
+
+    for path in _site_packages_candidates(venv_root):
+        if path.is_dir():
+            return str(path)
+
+    return ""
+
+
+def _session_site_packages_path():
+    if not hasattr(hou.session, SESSION_SITE_PACKAGES_ATTR):
+        setattr(hou.session, SESSION_SITE_PACKAGES_ATTR, "")
+    return getattr(hou.session, SESSION_SITE_PACKAGES_ATTR)
+
+
+def unload_python_packages():
+    site_packages_path = _session_site_packages_path()
+    if not site_packages_path:
+        return
+
+    sys.path = [
+        path
+        for path in sys.path
+        if not _same_path(path, site_packages_path)
+    ]
+    _remove_modules_in_directory(site_packages_path)
+    setattr(hou.session, SESSION_SITE_PACKAGES_ATTR, "")
+
+
+def load_python_packages():
+    site_packages_path = _find_site_packages_path()
+    previous_site_packages_path = _session_site_packages_path()
+
+    if previous_site_packages_path and not _same_path(
+        previous_site_packages_path,
+        site_packages_path,
+    ):
+        unload_python_packages()
+
+    if not site_packages_path:
+        setattr(hou.session, SESSION_SITE_PACKAGES_ATTR, "")
+        return False
+
+    if not any(_same_path(path, site_packages_path) for path in sys.path):
+        sys.path.append(site_packages_path)
+
+    setattr(hou.session, SESSION_SITE_PACKAGES_ATTR, site_packages_path)
+    return True
+
 
 def hvenvloader_scene_event_callback(event_type):
-    if event_type == hou.hipFileEventType.BeforeSave or event_type == hou.hipFileEventType.BeforeClear:
-        unload_houdini_packages()
+    if (
+        event_type == hou.hipFileEventType.BeforeSave
+        or event_type == hou.hipFileEventType.BeforeClear
+    ):
         unload_python_packages()
+
     if event_type == hou.hipFileEventType.AfterSave:
         load_python_packages()
-        load_houdini_packages()
-
-if hvenvloader_scene_event_callback.__name__ not in map(lambda f: f.__name__, hou.hipFile.eventCallbacks()):
-    hou.hipFile.addEventCallback(hvenvloader_scene_event_callback)
-
-load_python_packages()
-load_houdini_packages()
 
 
+def _is_callback_registered():
+    callback_name = hvenvloader_scene_event_callback.__name__
+    return callback_name in [
+        getattr(callback, "__name__", "")
+        for callback in hou.hipFile.eventCallbacks()
+    ]
 
+
+if not _is_launcher_mode():
+    if not _is_callback_registered():
+        hou.hipFile.addEventCallback(hvenvloader_scene_event_callback)
+    load_python_packages()
+else:
+    print("[{}] Launcher mode detected. 456.py fallback skipped.".format(MESSAGE_HEADER))

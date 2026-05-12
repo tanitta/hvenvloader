@@ -9,6 +9,7 @@ This is a Houdini package for use within a Python project workflow, providing th
 - Loading Python packages from the project-local Python virtual environment `.venv` into Houdini.
 - Loading [Houdini Package](https://www.sidefx.com/docs/houdini/ref/plugins.html) files included in Python packages installed under `.venv`.
 - Creating a project launcher (`houdini.bat` or `houdini.sh`) that starts Houdini with the project's `.venv`.
+- Providing shelf tools for initializing uv projects, creating hvenvloader-compatible Houdini packages, and running common uv commands.
 
 ## Installation
 
@@ -31,6 +32,12 @@ The `hvenvloader.json` file registers this package with Houdini. See also [Houdi
 
 The generated launcher is part of the project. Keep it next to the project's `.venv` and use it whenever you work on that project.
 
+## Shelf Tools
+
+- `venv > Init Project` runs `uv init`, `uv sync`, and writes the project launcher.
+- `venv > Create Houdini Package` opens a dialog for creating a Python package that contains a Houdini Package JSON and standard Houdini asset directories.
+- `venv > uv` opens a small UI for `uv init`, `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv tree`, and launcher generation.
+
 ## Launcher Behavior
 
 `houdini.bat` and `houdini.sh` are launchers for a project root. They expect this layout:
@@ -47,17 +54,24 @@ When the launcher starts Houdini, it:
 1. Finds the project's `.venv` relative to the launcher file.
 2. Sets `HOUDINI_PACKAGE_DIR` and `PYTHONPATH` to the `.venv` `site-packages` directory.
 3. Copies `hpackage.json` files from installed Python packages into `site-packages` as Houdini package `.json` files so Houdini can discover them.
-4. Starts Houdini with the project virtual environment available.
+4. Sets `HVENVLOADER_LAUNCHER=1` so the `456.py` fallback does not run.
+5. Starts Houdini with the project virtual environment available.
 
 If you do not use the shelf tool, copy the appropriate launcher (`houdini.bat` or `houdini.sh`) into your project root manually and edit the Houdini executable path and `HOUDINI_USER_PREF_DIR` values for your environment.
+
+## Non-Launcher Behavior
+
+When Houdini is started without the generated launcher, hvenvloader falls back to `scripts/456.py`.
+
+In this mode, hvenvloader only adds `$JOB/.venv` `site-packages` to Houdini's Python path. Houdini Package files from installed Python packages are not loaded in `456.py` mode. Use the generated launcher when you need Houdini Package discovery from `.venv`.
 
 ## Usage
 
 1. Install Python packages into the project `.venv`.
-2. Start Houdini with the project root launcher.
+2. Start Houdini with the project root launcher when you need both Python packages and Houdini Packages from `.venv`.
 3. Open the project's `.hip` file.
 
-When Houdini starts through the launcher, packages installed in `.venv` are available in Houdini's Python environment, and Houdini package files provided by those packages can be loaded.
+When Houdini starts through the normal shortcut, Python packages installed in `$JOB/.venv` are available through the `456.py` fallback, but Houdini Package files provided by those packages are not loaded.
 
 ## Creating hvenvloader-compatible Houdini Packages
 
@@ -78,6 +92,8 @@ my-houdini-package/
       otls/
         my_asset.hda
 ```
+
+You can create this structure from Houdini with `venv > Create Houdini Package`.
 
 `hpackage.json` should point Houdini back to the installed Python package directory. For example:
 

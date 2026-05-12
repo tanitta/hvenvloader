@@ -17,6 +17,8 @@ DEFAULT_HOUDINI_SUBDIRS = (
     "python_panels",
     "desktop",
 )
+EDITABLE_HOUDINI_PACKAGE_DIR_NAME = "_hvenvloader_houdini_packages"
+STALE_EDITABLE_HOUDINI_BOOTSTRAP_JSON_NAME = "_hvenvloader_editable_packages.json"
 
 
 def _hou():
@@ -100,10 +102,12 @@ def generate_launcher(root_path):
     if platform.system() == "Windows":
         launcher_name = "houdini.bat"
 
-    template_path = _hvenvloader_root() / launcher_name
+    hvenvloader_root = _hvenvloader_root()
+    template_path = hvenvloader_root / launcher_name
     text = template_path.read_text(encoding="utf-8")
     text = text.replace("@HOUDINI_EXE@", sys.executable)
     text = text.replace("@HOUDINI_USER_PREF_DIR@", _hou().getenv("HOUDINI_USER_PREF_DIR") or "")
+    text = text.replace("@HVENVLOADER@", str(hvenvloader_root))
 
     launcher_path = root_path / launcher_name
     launcher_path.write_text(text, encoding="utf-8")
@@ -291,6 +295,85 @@ def _candidate_houdini_package_dirs(site_packages_path, package_name):
     return [path for path in package_dirs if (path / "hpackage.json").is_file()]
 
 
+def _is_relative_to(path, parent):
+    try:
+        Path(path).resolve().relative_to(Path(parent).resolve())
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _copied_json_path_for_package(site_packages_path, package_dir):
+    if _is_relative_to(package_dir, site_packages_path):
+        return site_packages_path / "{}.json".format(package_dir.name)
+    return (
+        site_packages_path
+        / EDITABLE_HOUDINI_PACKAGE_DIR_NAME
+        / "{}.json".format(package_dir.name)
+    )
+
+
+def _editable_link_path_for_package(site_packages_path, package_dir):
+    if _is_relative_to(package_dir, site_packages_path):
+        return None
+    return site_packages_path / EDITABLE_HOUDINI_PACKAGE_DIR_NAME / package_dir.name
+
+
+def _stale_editable_bootstrap_json_path(site_packages_path):
+    return site_packages_path / STALE_EDITABLE_HOUDINI_BOOTSTRAP_JSON_NAME
+
+
+def _remove_generated_package_link(link_path, package_dir):
+    if link_path is None:
+        return False
+    if not link_path.exists() and not link_path.is_symlink():
+        return False
+
+    try:
+        if link_path.resolve() != package_dir.resolve():
+            return False
+    except OSError:
+        return False
+
+    if link_path.is_dir() and not link_path.is_symlink():
+        link_path.rmdir()
+    else:
+        link_path.unlink()
+    return True
+
+
+def _remove_editable_overlay_if_empty(site_packages_path, hou):
+    overlay_path = site_packages_path / EDITABLE_HOUDINI_PACKAGE_DIR_NAME
+    if not overlay_path.is_dir():
+        return []
+
+    try:
+        next(overlay_path.iterdir())
+        return []
+    except StopIteration:
+        pass
+
+    messages = []
+    overlay_path.rmdir()
+    messages.append("Removed empty editable NVHP overlay: {}".format(overlay_path))
+
+    bootstrap_json_path = _stale_editable_bootstrap_json_path(site_packages_path)
+    if bootstrap_json_path.is_file():
+        hou.ui.unloadPackage(str(bootstrap_json_path))
+        messages.append(
+            "Unloaded stale editable NVHP overlay bootstrap: {}".format(
+                bootstrap_json_path
+            )
+        )
+        bootstrap_json_path.unlink()
+        messages.append(
+            "Removed stale editable NVHP overlay bootstrap: {}".format(
+                bootstrap_json_path
+            )
+        )
+    return messages
+
+
 def _houdini_package_entries_for_package(root_path, package_requirement):
     package_name = _package_name_from_requirement(package_requirement)
     if not package_name:
@@ -301,16 +384,19 @@ def _houdini_package_entries_for_package(root_path, package_requirement):
     for site_packages_path in _site_packages_paths(root_path):
         for package_dir in _candidate_houdini_package_dirs(site_packages_path, package_name):
             source_json_path = package_dir / "hpackage.json"
-            copied_json_path = site_packages_path / "{}.json".format(package_dir.name)
+            copied_json_path = _copied_json_path_for_package(site_packages_path, package_dir)
+            link_path = _editable_link_path_for_package(site_packages_path, package_dir)
             key = (str(source_json_path), str(copied_json_path))
             if key in seen:
                 continue
             seen.add(key)
             entries.append(
                 {
+                    "site_packages_path": site_packages_path,
                     "package_dir": package_dir,
                     "source_json_path": source_json_path,
                     "copied_json_path": copied_json_path,
+                    "link_path": link_path,
                 }
             )
     return entries
@@ -325,19 +411,25 @@ def unload_houdini_packages_for_removed_package(root_path, package_requirement):
     messages = []
     for entry in entries:
         copied_json_path = entry["copied_json_path"]
+        site_packages_path = entry["site_packages_path"]
         source_json_path = entry["source_json_path"]
+        package_dir = entry["package_dir"]
+        link_path = entry["link_path"]
         if not copied_json_path.is_file():
             messages.append(
-                "Detected Houdini Package source, but no copied package JSON was found: {}".format(
+                "Detected NVHP source, but no copied package JSON was found: {}".format(
                     source_json_path
                 )
             )
             continue
 
         hou.ui.unloadPackage(str(copied_json_path))
-        messages.append("Unloaded Houdini Package: {}".format(copied_json_path))
+        messages.append("Unloaded NVHP: {}".format(copied_json_path))
         copied_json_path.unlink()
-        messages.append("Removed copied Houdini Package JSON: {}".format(copied_json_path))
+        messages.append("Removed copied NVHP JSON: {}".format(copied_json_path))
+        if _remove_generated_package_link(link_path, package_dir):
+            messages.append("Removed editable NVHP link: {}".format(link_path))
+            messages.extend(_remove_editable_overlay_if_empty(site_packages_path, hou))
 
     return messages
 
@@ -429,11 +521,16 @@ where = ["src"]
 def _readme_text(project_name, package_name):
     return """# {project_name}
 
-Houdini package distributed as a Python package.
+Native venvloader Houdini Package (NVHP) distributed as a Python package.
+
+This package uses the hvenvloader-native package layout. Install it into a
+project `.venv` and launch Houdini with the generated hvenvloader launcher.
+It is not a standalone vanilla Houdini Package source layout.
 
 ## Layout
 
-- `src/{package_name}/hpackage.json` registers the installed package as a Houdini package.
+- `src/{package_name}/__init__.py` is the Python import package root.
+- `src/{package_name}/hpackage.json` registers the installed package as an NVHP.
 - Houdini assets can be placed under package subdirectories such as `otls`, `scripts`, `toolbar`, and `python_panels`.
 """.format(
         project_name=project_name,
@@ -515,7 +612,7 @@ def create_houdini_package_tool():
     class Dialog(QtWidgets.QDialog):
         def __init__(self, parent=None):
             super(Dialog, self).__init__(parent)
-            self.setWindowTitle("Create Houdini Package")
+            self.setWindowTitle("Create NVHP")
             self.setMinimumWidth(560)
             self._auto_package_name = True
             self._auto_env_var = True
@@ -540,7 +637,7 @@ def create_houdini_package_tool():
             self.package_name_edit = QtWidgets.QLineEdit("MyHoudiniPackage")
             self.env_var_edit = QtWidgets.QLineEdit("MYHOUDINIPACKAGE")
             self.version_edit = QtWidgets.QLineEdit("0.1.0")
-            self.description_edit = QtWidgets.QLineEdit("My hvenvloader-compatible Houdini package.")
+            self.description_edit = QtWidgets.QLineEdit("My native venvloader Houdini package.")
             self.requires_python_edit = QtWidgets.QLineEdit(">={}".format(python_version_tag()))
 
             self.save_dir_edit.textChanged.connect(self._update_generated_folder)
@@ -631,12 +728,12 @@ def create_houdini_package_tool():
                     overwrite=self.overwrite_check.isChecked(),
                 )
             except Exception as exc:
-                QtWidgets.QMessageBox.critical(self, "Create Houdini Package", str(exc))
+                QtWidgets.QMessageBox.critical(self, "Create NVHP", str(exc))
                 return
 
             QtWidgets.QMessageBox.information(
                 self,
-                "Create Houdini Package",
+                "Create NVHP",
                 "Created:\n{}".format(root_path),
             )
             self.accept()
@@ -801,11 +898,11 @@ def uv_tool():
                     package,
                 )
             except Exception as exc:
-                self._append_output("Failed to unload Houdini Package before uv remove: {}".format(exc))
+                self._append_output("Failed to unload NVHP before uv remove: {}".format(exc))
                 QtWidgets.QMessageBox.critical(
                     self,
                     "uv remove",
-                    "Failed to unload Houdini Package before uv remove.\n\n{}".format(exc),
+                    "Failed to unload NVHP before uv remove.\n\n{}".format(exc),
                 )
                 return
 

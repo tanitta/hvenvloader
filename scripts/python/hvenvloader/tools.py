@@ -1,4 +1,5 @@
 import json
+import os
 import platform
 import re
 import shlex
@@ -6,6 +7,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 
 DEFAULT_HOUDINI_SUBDIRS = (
@@ -112,10 +114,28 @@ def generate_launcher(root_path):
     return launcher_path
 
 
+def _uv_subprocess_env():
+    env = os.environ.copy()
+
+    if platform.system() == "Windows" and "GIT_CONFIG_GLOBAL" not in env:
+        user_profile = env.get("USERPROFILE")
+        if not user_profile and env.get("HOMEDRIVE") and env.get("HOMEPATH"):
+            user_profile = env["HOMEDRIVE"] + env["HOMEPATH"]
+
+        if user_profile:
+            env["HOME"] = user_profile
+            git_config = Path(user_profile) / ".gitconfig"
+            if git_config.is_file():
+                env["GIT_CONFIG_GLOBAL"] = str(git_config)
+
+    return env
+
+
 def run_uv(args, cwd):
     return subprocess.run(
         ["uv"] + list(args),
         cwd=str(cwd),
+        env=_uv_subprocess_env(),
         capture_output=True,
         check=False,
         text=True,
@@ -132,6 +152,194 @@ def run_uv_checked(args, cwd):
 
 def _format_command(args):
     return " ".join(shlex.quote(str(arg)) for arg in args)
+
+
+def _uv_failure_hint(output):
+    if "detected dubious ownership" not in output or "safe.directory" not in output:
+        return ""
+
+    path_match = re.search(r"repository at\s+'([^']+)'", output)
+    if not path_match:
+        path_match = re.search(r"safe\.directory\s+[\r\n]+\s*([^\s\r\n]+)", output)
+    if not path_match:
+        return (
+            "Hint: Git rejected the local package repository because of dubious ownership.\n"
+            "This tool does not modify Git safe.directory settings. If you trust this "
+            "repository, run the suggested `git config --global --add safe.directory ...` "
+            "command yourself, then retry."
+        )
+
+    repository_path = path_match.group(1)
+    return (
+        "Hint: Git rejected the local package repository because of dubious ownership.\n"
+        "This tool does not modify Git safe.directory settings. If you trust this "
+        "repository, run this yourself, then retry:\n"
+        'git config --global --add safe.directory "{}"'.format(
+            repository_path.replace('"', '\\"')
+        )
+    )
+
+
+def _site_packages_paths(root_path):
+    root_path = Path(root_path)
+    version = "{}.{}".format(sys.version_info.major, sys.version_info.minor)
+    candidates = [
+        root_path / ".venv" / "Lib" / "site-packages",
+        root_path / ".venv" / "lib" / "python{}".format(version) / "site-packages",
+        root_path / ".venv" / "lib" / "site-packages",
+    ]
+    return [path for path in candidates if path.is_dir()]
+
+
+def _normalize_distribution_name(name):
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _package_name_from_requirement(requirement):
+    name = requirement.strip()
+    name = re.split(r"\s|<|>|=|!|~|;|,|\[", name, maxsplit=1)[0]
+    return name.strip()
+
+
+def _metadata_name(dist_info_path):
+    metadata_path = dist_info_path / "METADATA"
+    if not metadata_path.is_file():
+        return ""
+
+    for line in metadata_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.lower().startswith("name:"):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+def _dist_info_matches(dist_info_path, package_name):
+    package_key = _normalize_distribution_name(package_name)
+    metadata_name = _metadata_name(dist_info_path)
+    if metadata_name and _normalize_distribution_name(metadata_name) == package_key:
+        return True
+
+    dist_info_name = dist_info_path.name
+    if dist_info_name.endswith(".dist-info"):
+        dist_info_name = dist_info_name[:-10]
+    dist_name = dist_info_name.split("-", 1)[0]
+    return _normalize_distribution_name(dist_name) == package_key
+
+
+def _top_level_packages(dist_info_path):
+    top_level_path = dist_info_path / "top_level.txt"
+    if not top_level_path.is_file():
+        return []
+
+    packages = []
+    for line in top_level_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if line:
+            packages.append(line)
+    return packages
+
+
+def _path_from_file_url(url):
+    parsed = urlparse(url)
+    if parsed.scheme != "file":
+        return None
+
+    path = unquote(parsed.path)
+    if re.match(r"^/[A-Za-z]:/", path):
+        path = path[1:]
+    if parsed.netloc:
+        path = "//{}/{}".format(parsed.netloc, path.lstrip("/"))
+    return Path(path)
+
+
+def _direct_url_path(dist_info_path):
+    direct_url_path = dist_info_path / "direct_url.json"
+    if not direct_url_path.is_file():
+        return None
+
+    try:
+        data = json.loads(direct_url_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+    url = data.get("url")
+    if not url:
+        return None
+    return _path_from_file_url(url)
+
+
+def _candidate_houdini_package_dirs(site_packages_path, package_name):
+    package_key = _normalize_distribution_name(package_name)
+    package_dirs = set()
+
+    for dist_info_path in site_packages_path.glob("*.dist-info"):
+        if not _dist_info_matches(dist_info_path, package_name):
+            continue
+
+        for top_level in _top_level_packages(dist_info_path):
+            package_dirs.add(site_packages_path / top_level)
+
+        direct_url_root = _direct_url_path(dist_info_path)
+        if direct_url_root:
+            for top_level in _top_level_packages(dist_info_path):
+                package_dirs.add(direct_url_root / "src" / top_level)
+                package_dirs.add(direct_url_root / top_level)
+
+    for child in site_packages_path.iterdir():
+        if child.is_dir() and _normalize_distribution_name(child.name) == package_key:
+            package_dirs.add(child)
+
+    return [path for path in package_dirs if (path / "hpackage.json").is_file()]
+
+
+def _houdini_package_entries_for_package(root_path, package_requirement):
+    package_name = _package_name_from_requirement(package_requirement)
+    if not package_name:
+        return []
+
+    entries = []
+    seen = set()
+    for site_packages_path in _site_packages_paths(root_path):
+        for package_dir in _candidate_houdini_package_dirs(site_packages_path, package_name):
+            source_json_path = package_dir / "hpackage.json"
+            copied_json_path = site_packages_path / "{}.json".format(package_dir.name)
+            key = (str(source_json_path), str(copied_json_path))
+            if key in seen:
+                continue
+            seen.add(key)
+            entries.append(
+                {
+                    "package_dir": package_dir,
+                    "source_json_path": source_json_path,
+                    "copied_json_path": copied_json_path,
+                }
+            )
+    return entries
+
+
+def unload_houdini_packages_for_removed_package(root_path, package_requirement):
+    entries = _houdini_package_entries_for_package(root_path, package_requirement)
+    if not entries:
+        return []
+
+    hou = _hou()
+    messages = []
+    for entry in entries:
+        copied_json_path = entry["copied_json_path"]
+        source_json_path = entry["source_json_path"]
+        if not copied_json_path.is_file():
+            messages.append(
+                "Detected Houdini Package source, but no copied package JSON was found: {}".format(
+                    source_json_path
+                )
+            )
+            continue
+
+        hou.ui.unloadPackage(str(copied_json_path))
+        messages.append("Unloaded Houdini Package: {}".format(copied_json_path))
+        copied_json_path.unlink()
+        messages.append("Removed copied Houdini Package JSON: {}".format(copied_json_path))
+
+    return messages
 
 
 def init_python_project(root_path):
@@ -498,9 +706,16 @@ def uv_tool():
             self.output_edit.setReadOnly(True)
             layout.addWidget(self.output_edit)
 
+            bottom_layout = QtWidgets.QHBoxLayout()
+            clear_log_button = QtWidgets.QPushButton("Clear Log")
+            clear_log_button.clicked.connect(self.output_edit.clear)
+            bottom_layout.addWidget(clear_log_button)
+            bottom_layout.addStretch()
+
             close_button = QtWidgets.QDialogButtonBox(_dialog_button(QtWidgets, "Close"))
             close_button.rejected.connect(self.reject)
-            layout.addWidget(close_button)
+            bottom_layout.addWidget(close_button)
+            layout.addLayout(bottom_layout)
 
         def _browse_root(self):
             selected = QtWidgets.QFileDialog.getExistingDirectory(
@@ -555,6 +770,9 @@ def uv_tool():
             output = (result.stdout or "") + (result.stderr or "")
             if output.strip():
                 self._append_output(output)
+            hint = _uv_failure_hint(output)
+            if result.returncode != 0 and hint:
+                self._append_output(hint)
             self._append_output("exit code: {}\n".format(result.returncode))
             return result
 
@@ -577,6 +795,22 @@ def uv_tool():
             if not package:
                 QtWidgets.QMessageBox.warning(self, "uv", "Installed package name is required.")
                 return
+            try:
+                messages = unload_houdini_packages_for_removed_package(
+                    self._project_root(),
+                    package,
+                )
+            except Exception as exc:
+                self._append_output("Failed to unload Houdini Package before uv remove: {}".format(exc))
+                QtWidgets.QMessageBox.critical(
+                    self,
+                    "uv remove",
+                    "Failed to unload Houdini Package before uv remove.\n\n{}".format(exc),
+                )
+                return
+
+            for message in messages:
+                self._append_output(message)
             self._run(["remove", package])
 
         def _write_launcher(self):

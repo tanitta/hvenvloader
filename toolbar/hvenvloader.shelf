@@ -8,6 +8,7 @@
   <toolshelf name="hvenvloader" label="venv">
     <memberTool name="init"/>
     <memberTool name="create_houdini_package"/>
+    <memberTool name="export_nvhp"/>
     <memberTool name="uv"/>
   </toolshelf>
 
@@ -19,6 +20,11 @@ init_project_tool()]]></script>
   <tool name="create_houdini_package" label="Create NVHP" icon="MISC_python">
     <script scriptType="python"><![CDATA[from hvenvloader.tools import create_houdini_package_tool
 create_houdini_package_tool()]]></script>
+  </tool>
+
+  <tool name="export_nvhp" label="Export NVHP" icon="MISC_python">
+    <script scriptType="python"><![CDATA[from hvenvloader.tools import export_nvhp_tool
+export_nvhp_tool()]]></script>
   </tool>
 
   <tool name="uv" label="uv" icon="MISC_python">

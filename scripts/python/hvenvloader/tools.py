@@ -2,6 +2,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import shlex
 import stat
 import subprocess
@@ -16,6 +17,24 @@ DEFAULT_HOUDINI_SUBDIRS = (
     "toolbar",
     "python_panels",
     "desktop",
+)
+VANILLA_HOUDINI_PACKAGE_DIRS = frozenset(
+    DEFAULT_HOUDINI_SUBDIRS
+    + (
+        "config",
+        "dso",
+        "gallery",
+        "help",
+        "hda",
+        "icons",
+        "packages",
+        "pdg",
+        "radialmenu",
+        "soho",
+        "usd",
+        "vex",
+        "viewer_states",
+    )
 )
 EDITABLE_HOUDINI_PACKAGE_DIR_NAME = "_hvenvloader_houdini_packages"
 STALE_EDITABLE_HOUDINI_BOOTSTRAP_JSON_NAME = "_hvenvloader_editable_packages.json"
@@ -735,6 +754,224 @@ def create_houdini_package_tool():
                 self,
                 "Create NVHP",
                 "Created:\n{}".format(root_path),
+            )
+            self.accept()
+
+    _exec_dialog(Dialog(_dialog_parent()))
+
+
+def _copy_export_path(source_path, destination_path, overwrite):
+    source_path = Path(source_path)
+    destination_path = Path(destination_path)
+    if destination_path.exists() or destination_path.is_symlink():
+        if not overwrite:
+            raise FileExistsError("{} already exists.".format(destination_path))
+        if destination_path.is_dir() and not destination_path.is_symlink():
+            shutil.rmtree(str(destination_path))
+        else:
+            destination_path.unlink()
+
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    if source_path.is_dir():
+        shutil.copytree(
+            str(source_path),
+            str(destination_path),
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+        )
+    else:
+        shutil.copy2(str(source_path), str(destination_path))
+
+
+def _export_reserved_name_conflicts(package_dir):
+    conflicts = []
+    for child in Path(package_dir).iterdir():
+        if (
+            child.is_dir()
+            and child.name in VANILLA_HOUDINI_PACKAGE_DIRS
+            and (child / "__init__.py").is_file()
+        ):
+            conflicts.append(child)
+    return conflicts
+
+
+def _copy_python_sources_for_export(source_root, destination_root):
+    source_root = Path(source_root)
+    destination_root = Path(destination_root)
+    for source_path in source_root.rglob("*.py"):
+        relative_path = source_path.relative_to(source_root)
+        if "__pycache__" in relative_path.parts:
+            continue
+        if relative_path.parts and relative_path.parts[0] in VANILLA_HOUDINI_PACKAGE_DIRS:
+            continue
+        _copy_export_path(source_path, destination_root / relative_path, overwrite=True)
+
+
+def export_nvhp(package_dir, export_dir, overwrite=False):
+    package_dir = Path(package_dir)
+    export_dir = Path(export_dir)
+    if not package_dir.is_dir():
+        raise ValueError("NVHP package directory does not exist: {}".format(package_dir))
+    if not (package_dir / "hpackage.json").is_file():
+        raise ValueError("NVHP package directory must contain hpackage.json: {}".format(package_dir))
+    if not (package_dir / "__init__.py").is_file():
+        raise ValueError("NVHP package directory must contain __init__.py: {}".format(package_dir))
+
+    package_name = package_dir.name
+    conflicts = _export_reserved_name_conflicts(package_dir)
+    if conflicts:
+        raise ValueError(
+            "Reserved Houdini directory names cannot also be Python subpackages:\n{}".format(
+                "\n".join(str(path) for path in conflicts)
+            )
+        )
+    legacy_python_package_dir = package_dir / "scripts" / "python" / package_name
+    if legacy_python_package_dir.exists():
+        raise ValueError(
+            "NVHP package directory already contains a vanilla scripts/python package path: {}".format(
+                legacy_python_package_dir
+            )
+        )
+
+    if _is_relative_to(export_dir, package_dir):
+        raise ValueError("Export directory must not be inside the source package directory.")
+
+    exported_package_dir = export_dir / package_name
+    if exported_package_dir.resolve() == package_dir.resolve():
+        raise ValueError("Export package directory would overwrite the source package directory.")
+
+    exported_json_path = export_dir / "{}.json".format(package_name)
+    if not overwrite:
+        if exported_json_path.exists():
+            raise FileExistsError("{} already exists.".format(exported_json_path))
+        if exported_package_dir.exists() or exported_package_dir.is_symlink():
+            raise FileExistsError("{} already exists.".format(exported_package_dir))
+
+    export_dir.mkdir(parents=True, exist_ok=True)
+    _copy_export_path(package_dir / "hpackage.json", exported_json_path, overwrite)
+
+    if exported_package_dir.exists() or exported_package_dir.is_symlink():
+        if not overwrite:
+            raise FileExistsError("{} already exists.".format(exported_package_dir))
+        if exported_package_dir.is_dir() and not exported_package_dir.is_symlink():
+            shutil.rmtree(str(exported_package_dir))
+        else:
+            exported_package_dir.unlink()
+    exported_package_dir.mkdir(parents=True, exist_ok=True)
+
+    python_package_dir = exported_package_dir / "scripts" / "python" / package_name
+    for child in package_dir.iterdir():
+        if child.name in ("hpackage.json", "__pycache__"):
+            continue
+        if child.name in VANILLA_HOUDINI_PACKAGE_DIRS:
+            _copy_export_path(child, exported_package_dir / child.name, overwrite=True)
+    _copy_python_sources_for_export(package_dir, python_package_dir)
+
+    return {
+        "export_dir": export_dir,
+        "package_json": exported_json_path,
+        "package_dir": exported_package_dir,
+        "python_package_dir": python_package_dir,
+    }
+
+
+def export_nvhp_tool():
+    QtCore, QtWidgets = _qt_modules()
+
+    class Dialog(QtWidgets.QDialog):
+        def __init__(self, parent=None):
+            super(Dialog, self).__init__(parent)
+            self.setWindowTitle("Export NVHP")
+            self.setMinimumWidth(620)
+
+            layout = QtWidgets.QVBoxLayout(self)
+            form = QtWidgets.QFormLayout()
+            layout.addLayout(form)
+
+            self.package_dir_edit = QtWidgets.QLineEdit(str(_default_project_root()))
+            package_browse_button = QtWidgets.QPushButton("...")
+            package_browse_button.clicked.connect(self._browse_package_dir)
+            package_dir_layout = QtWidgets.QHBoxLayout()
+            package_dir_layout.addWidget(self.package_dir_edit)
+            package_dir_layout.addWidget(package_browse_button)
+            form.addRow("NVHP Package Directory", package_dir_layout)
+
+            self.export_dir_edit = QtWidgets.QLineEdit(str(_default_project_root() / "export"))
+            export_browse_button = QtWidgets.QPushButton("...")
+            export_browse_button.clicked.connect(self._browse_export_dir)
+            export_dir_layout = QtWidgets.QHBoxLayout()
+            export_dir_layout.addWidget(self.export_dir_edit)
+            export_dir_layout.addWidget(export_browse_button)
+            form.addRow("Export Directory", export_dir_layout)
+
+            self.output_json_edit = QtWidgets.QLineEdit()
+            self.output_json_edit.setReadOnly(True)
+            form.addRow("Package JSON", self.output_json_edit)
+
+            self.output_folder_edit = QtWidgets.QLineEdit()
+            self.output_folder_edit.setReadOnly(True)
+            form.addRow("Package Folder", self.output_folder_edit)
+
+            self.overwrite_check = QtWidgets.QCheckBox("Overwrite existing exported package")
+            layout.addWidget(self.overwrite_check)
+
+            self.package_dir_edit.textChanged.connect(self._update_preview)
+            self.export_dir_edit.textChanged.connect(self._update_preview)
+
+            ok_button = _dialog_button(QtWidgets, "Ok")
+            cancel_button = _dialog_button(QtWidgets, "Cancel")
+            buttons = QtWidgets.QDialogButtonBox(ok_button | cancel_button)
+            buttons.button(ok_button).setText("Export")
+            buttons.accepted.connect(self._export)
+            buttons.rejected.connect(self.reject)
+            layout.addWidget(buttons)
+            self._update_preview()
+
+        def _browse_package_dir(self):
+            selected = QtWidgets.QFileDialog.getExistingDirectory(
+                self,
+                "Select NVHP Package Directory",
+                self.package_dir_edit.text(),
+            )
+            if selected:
+                self.package_dir_edit.setText(selected)
+
+        def _browse_export_dir(self):
+            selected = QtWidgets.QFileDialog.getExistingDirectory(
+                self,
+                "Select Export Directory",
+                self.export_dir_edit.text(),
+            )
+            if selected:
+                self.export_dir_edit.setText(selected)
+
+        def _update_preview(self):
+            package_name = Path(self.package_dir_edit.text()).name
+            if not package_name:
+                self.output_json_edit.clear()
+                self.output_folder_edit.clear()
+                return
+            export_dir = Path(self.export_dir_edit.text())
+            self.output_json_edit.setText(str(export_dir / "{}.json".format(package_name)))
+            self.output_folder_edit.setText(str(export_dir / package_name))
+
+        def _export(self):
+            try:
+                result = export_nvhp(
+                    self.package_dir_edit.text(),
+                    self.export_dir_edit.text(),
+                    overwrite=self.overwrite_check.isChecked(),
+                )
+            except Exception as exc:
+                QtWidgets.QMessageBox.critical(self, "Export NVHP", str(exc))
+                return
+
+            QtWidgets.QMessageBox.information(
+                self,
+                "Export NVHP",
+                "Exported:\n{}\n\nPackage JSON:\n{}".format(
+                    result["package_dir"],
+                    result["package_json"],
+                ),
             )
             self.accept()
 

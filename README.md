@@ -38,6 +38,7 @@ The generated launcher is part of the project. Keep it next to the project's `.v
 
 - `venv > Init Project` runs `uv init`, `uv sync`, and writes the project launcher.
 - `venv > Create NVHP` opens a dialog for creating a Python package that contains an NVHP JSON and standard Houdini asset directories.
+- `venv > Export NVHP` opens a dialog for exporting an NVHP package directory to a vanilla Houdini Package layout.
 - `venv > uv` opens a small UI for `uv init`, `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv tree`, and launcher generation. It also supports adding local packages and `uv add --editable`.
 
 ## Launcher Behavior
@@ -89,6 +90,22 @@ The important convention is that each Python import package that provides an NVH
 Regular installs place the import package under `site-packages`, so the launcher copies `hpackage.json` directly to `site-packages/<package>.json`. Editable local installs keep the import package in the source checkout, so the launcher reads `.dist-info/direct_url.json` and `top_level.txt`, recreates `.venv/.../site-packages/_hvenvloader_houdini_packages/`, copies `hpackage.json` there unchanged, and creates a generated directory link named `<package>` that points back to the source package directory. The launcher adds that generated directory directly to `HOUDINI_PACKAGE_DIR`.
 
 Because NVHPs rely on this `.venv` layout, install them with uv and start Houdini through the generated hvenvloader launcher. Installing the source checkout directly as a regular Houdini Package is not supported. This tradeoff keeps imports consistent between Houdini, `uv run`, tests, and build scripts.
+
+When you need a regular Houdini Package distribution, use `venv > Export NVHP`. The exporter takes an NVHP package directory such as `src/MyHoudiniPackage/` and an export directory, then writes:
+
+```text
+export/
+  MyHoudiniPackage.json
+  MyHoudiniPackage/
+    otls/
+    toolbar/
+    scripts/
+      python/
+        MyHoudiniPackage/
+          __init__.py
+```
+
+The exported top-level JSON is copied from `hpackage.json` unchanged. Python source files (`*.py`) are copied into Houdini's `scripts/python/<package>/` location while preserving their directory structure. Non-Python files from the module tree are not copied there. Houdini asset directories stay under the exported package folder. Top-level names reserved for Houdini asset directories, such as `otls`, `scripts`, `toolbar`, `python_panels`, and `usd`, are treated as Houdini asset directories. Do not use those names for Python subpackages in an NVHP.
 
 Use this layout as a starting point:
 

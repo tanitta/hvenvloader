@@ -1,5 +1,7 @@
 # Houdini venv Loader (hvenvloader)
 
+[English](README.md) | [日本語](README.ja.md)
+
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/tanitta/hvenvloader/blob/main/LICENSE)
 
 ## Description

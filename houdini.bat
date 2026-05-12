@@ -9,6 +9,7 @@ REM ==============================================
 
 set "HOUDINI_EXE=@HOUDINI_EXE@"
 set "HOUDINI_USER_PREF_DIR=@HOUDINI_USER_PREF_DIR@"
+set "HVENVLOADER_LAUNCHER=1"
 set "SCRIPT_DIR=%~dp0"
 set "HOUDINI_PACKAGE_DIR=%SCRIPT_DIR%\.venv\Lib\site-packages"
 
@@ -19,5 +20,9 @@ for /D %%d in ("%HOUDINI_PACKAGE_DIR%\*") do (
     )
 )
 
-set "PYTHONPATH=%HOUDINI_PACKAGE_DIR%"
+if defined PYTHONPATH (
+    set "PYTHONPATH=%HOUDINI_PACKAGE_DIR%;%PYTHONPATH%"
+) else (
+    set "PYTHONPATH=%HOUDINI_PACKAGE_DIR%"
+)
 "%HOUDINI_EXE%"

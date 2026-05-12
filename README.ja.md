@@ -150,11 +150,3 @@ uv sync
 ```
 
 その後、生成された project launcher (`houdini.bat` または `houdini.sh`) から Houdini を再起動します。起動時に hvenvloader は Python package を import 可能にし、`hpackage.json` を package search directory に `MyHoudiniPackage.json` としてコピーします。
-
-## 注意
-
-`.venv` から読み込まれた Houdini package の HDA を hip file 内で使用している場合、file を開くときに HDA に関する warning が表示されることがあります。
-
-![image](https://github.com/tanitta/hvenvloader/assets/1937287/32d428d3-7dfe-4fbf-bf19-34fc7a68961a)
-
-これは、必要な Houdini Package HDA が hvenvloader によって動的に読み込まれる前に、HDA の dependency check が実行されるためです。そのため、file は正しく動作するので warning は無視できます。warning dialog を抑制したい場合は、environment variable [HOUDINI_DISABLE_FILE_LOAD_WARNINGS](https://www.sidefx.com/docs/houdini/ref/env) の設定を検討してください。

@@ -1,4 +1,5 @@
 import json
+import locale
 import os
 import shutil
 import subprocess
@@ -13,6 +14,41 @@ STALE_EDITABLE_BOOTSTRAP_JSON_NAME = "_hvenvloader_editable_packages.json"
 
 def _read_text(path):
     return Path(path).read_text(encoding="utf-8", errors="replace")
+
+
+def _subprocess_output_encodings():
+    encodings = ["utf-8"]
+    seen = {"utf-8"}
+
+    for encoding in (
+        locale.getpreferredencoding(False),
+        getattr(locale, "getencoding", lambda: None)(),
+        sys.getfilesystemencoding(),
+    ):
+        if encoding and encoding.lower() not in seen:
+            encodings.append(encoding)
+            seen.add(encoding.lower())
+
+    if os.name == "nt":
+        for encoding in ("mbcs", "oem"):
+            if encoding not in seen:
+                encodings.append(encoding)
+                seen.add(encoding)
+
+    return encodings
+
+
+def _decode_subprocess_output(data):
+    if not data:
+        return ""
+
+    for encoding in _subprocess_output_encodings():
+        try:
+            return data.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            pass
+
+    return data.decode("utf-8", errors="replace")
 
 
 def _path_from_file_url(url):
@@ -134,7 +170,6 @@ def _create_windows_directory_link(source_path, link_path):
         ["cmd", "/c", "mklink", "/J", str(link_path), str(source_path)],
         capture_output=True,
         check=False,
-        text=True,
     )
     if result.returncode == 0:
         return
@@ -142,7 +177,9 @@ def _create_windows_directory_link(source_path, link_path):
     try:
         os.symlink(str(source_path), str(link_path), target_is_directory=True)
     except OSError as symlink_exc:
-        output = (result.stdout or "") + (result.stderr or "")
+        output = _decode_subprocess_output(result.stdout) + _decode_subprocess_output(
+            result.stderr
+        )
         detail = output.strip() or str(symlink_exc)
         raise OSError(detail)
 

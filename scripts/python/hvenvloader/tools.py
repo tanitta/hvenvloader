@@ -1,4 +1,5 @@
 import json
+import locale
 import os
 import platform
 import re
@@ -154,15 +155,56 @@ def _uv_subprocess_env():
     return env
 
 
+def _subprocess_output_encodings():
+    encodings = ["utf-8"]
+    seen = {"utf-8"}
+
+    for encoding in (
+        locale.getpreferredencoding(False),
+        getattr(locale, "getencoding", lambda: None)(),
+        sys.getfilesystemencoding(),
+    ):
+        if encoding and encoding.lower() not in seen:
+            encodings.append(encoding)
+            seen.add(encoding.lower())
+
+    if os.name == "nt":
+        for encoding in ("mbcs", "oem"):
+            if encoding not in seen:
+                encodings.append(encoding)
+                seen.add(encoding)
+
+    return encodings
+
+
+def _decode_subprocess_output(data):
+    if not data:
+        return ""
+
+    for encoding in _subprocess_output_encodings():
+        try:
+            return data.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            pass
+
+    return data.decode("utf-8", errors="replace")
+
+
+def _decode_completed_process_output(result):
+    result.stdout = _decode_subprocess_output(result.stdout)
+    result.stderr = _decode_subprocess_output(result.stderr)
+    return result
+
+
 def run_uv(args, cwd):
-    return subprocess.run(
+    result = subprocess.run(
         ["uv"] + list(args),
         cwd=str(cwd),
         env=_uv_subprocess_env(),
         capture_output=True,
         check=False,
-        text=True,
     )
+    return _decode_completed_process_output(result)
 
 
 def run_uv_checked(args, cwd):

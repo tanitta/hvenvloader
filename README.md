@@ -58,16 +58,16 @@ When the launcher starts Houdini, it:
 2. Sets `PYTHONPATH` to the `.venv` `site-packages` directory.
 3. Sets `HOUDINI_PACKAGE_DIR` to the `.venv` `site-packages` directory, plus a generated editable-package directory when needed.
 4. Syncs `hpackage.json` files from installed Python packages into Houdini package search directories so Houdini can discover them. Editable local installs keep the original JSON content and use a generated static overlay plus a directory link back to the source package.
-5. Sets `HVENVLOADER_LAUNCHER=1` so the `456.py` fallback does not run.
+5. Sets `HVENVLOADER_LAUNCHER=1` so the non-launcher fallback does not run.
 6. Starts Houdini with the project virtual environment available.
 
 If you do not use the shelf tool, copy the appropriate launcher (`houdini.bat` or `houdini.sh`) into your project root manually and edit the Houdini executable path and `HOUDINI_USER_PREF_DIR` values for your environment.
 
 ## Non-Launcher Behavior
 
-When Houdini is started without the generated launcher, hvenvloader falls back to `scripts/456.py`.
+When Houdini is started without the generated launcher, hvenvloader falls back to `python3.11libs/ready.py`.
 
-In this mode, hvenvloader only adds `$JOB/.venv` `site-packages` to Houdini's Python path. NVHP files from installed Python packages are not loaded in `456.py` mode. Use the generated launcher when you need NVHP discovery from `.venv`.
+In this mode, hvenvloader only adds `$JOB/.venv` `site-packages` to Houdini's Python path. NVHP files from installed Python packages are not loaded in non-launcher fallback mode. Use the generated launcher when you need NVHP discovery from `.venv`.
 
 ## Usage
 
@@ -75,7 +75,7 @@ In this mode, hvenvloader only adds `$JOB/.venv` `site-packages` to Houdini's Py
 2. Start Houdini with the project root launcher when you need both Python packages and NVHPs from `.venv`.
 3. Open the project's `.hip` file.
 
-When Houdini starts through the normal shortcut, Python packages installed in `$JOB/.venv` are available through the `456.py` fallback, but NVHP files provided by those packages are not loaded.
+When Houdini starts through the normal shortcut, Python packages installed in `$JOB/.venv` are available through the `ready.py` fallback, but NVHP files provided by those packages are not loaded.
 
 ## Creating Native venvloader Houdini Packages (NVHP)
 

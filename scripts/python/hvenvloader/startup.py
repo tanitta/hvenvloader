@@ -120,14 +120,20 @@ def load_python_packages():
     return True
 
 
+def _event_types(*names):
+    event_types = []
+    for name in names:
+        event_type = getattr(hou.hipFileEventType, name, None)
+        if event_type is not None:
+            event_types.append(event_type)
+    return tuple(event_types)
+
+
 def hvenvloader_scene_event_callback(event_type):
-    if (
-        event_type == hou.hipFileEventType.BeforeSave
-        or event_type == hou.hipFileEventType.BeforeClear
-    ):
+    if event_type in _event_types("BeforeSave", "BeforeClear", "BeforeLoad"):
         unload_python_packages()
 
-    if event_type == hou.hipFileEventType.AfterSave:
+    if event_type in _event_types("AfterSave", "AfterClear", "AfterLoad"):
         load_python_packages()
 
 
@@ -139,9 +145,11 @@ def _is_callback_registered():
     ]
 
 
-if not _is_launcher_mode():
+def install():
+    if _is_launcher_mode():
+        print("[{}] Launcher mode detected. ready.py fallback skipped.".format(MESSAGE_HEADER))
+        return
+
     if not _is_callback_registered():
         hou.hipFile.addEventCallback(hvenvloader_scene_event_callback)
     load_python_packages()
-else:
-    print("[{}] Launcher mode detected. 456.py fallback skipped.".format(MESSAGE_HEADER))

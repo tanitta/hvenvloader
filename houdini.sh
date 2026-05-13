@@ -19,6 +19,7 @@ export HOUDINI_PACKAGE_DIR
 
 if [ -n "$PYTHON_SITE_PACKAGES" ] && [ -d "$PYTHON_SITE_PACKAGES" ]; then
     HVENVLOADER_EDITABLE_PACKAGE_DIR="$PYTHON_SITE_PACKAGES/_hvenvloader_houdini_packages"
+    HVENVLOADER_PYTHON_PATHS="$PYTHON_SITE_PACKAGES/_hvenvloader_python_paths.txt"
     PACKAGE_SYNC="$HVENVLOADER/scripts/python/hvenvloader/package_sync.py"
     VENV_PYTHON=""
     if [ -x "$SCRIPT_DIR/.venv/bin/python" ]; then
@@ -44,10 +45,19 @@ if [ -n "$PYTHON_SITE_PACKAGES" ] && [ -d "$PYTHON_SITE_PACKAGES" ]; then
         export HOUDINI_PACKAGE_DIR="$PYTHON_SITE_PACKAGES:$HVENVLOADER_EDITABLE_PACKAGE_DIR"
     fi
 
+    HVENVLOADER_PYTHONPATH="$PYTHON_SITE_PACKAGES"
+    if [ -f "$HVENVLOADER_PYTHON_PATHS" ]; then
+        while IFS= read -r python_path || [ -n "$python_path" ]; do
+            if [ -n "$python_path" ]; then
+                HVENVLOADER_PYTHONPATH="$HVENVLOADER_PYTHONPATH:$python_path"
+            fi
+        done < "$HVENVLOADER_PYTHON_PATHS"
+    fi
+
     if [ -n "$PYTHONPATH" ]; then
-        export PYTHONPATH="$PYTHON_SITE_PACKAGES:$PYTHONPATH"
+        export PYTHONPATH="$HVENVLOADER_PYTHONPATH:$PYTHONPATH"
     else
-        export PYTHONPATH="$PYTHON_SITE_PACKAGES"
+        export PYTHONPATH="$HVENVLOADER_PYTHONPATH"
     fi
 fi
 

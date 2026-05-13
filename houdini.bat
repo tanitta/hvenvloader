@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableExtensions EnableDelayedExpansion
 
 REM ==============================================
 REM This file is auto-generated.
@@ -16,6 +17,7 @@ set "PYTHON_SITE_PACKAGES=%SCRIPT_DIR%\.venv\Lib\site-packages"
 set "HOUDINI_PACKAGE_DIR=%PYTHON_SITE_PACKAGES%"
 set "HVENVLOADER_EDITABLE_PACKAGE_DIR=%PYTHON_SITE_PACKAGES%\_hvenvloader_houdini_packages"
 set "HVENVLOADER_PACKAGE_SYNC=%HVENVLOADER%\scripts\python\hvenvloader\package_sync.py"
+set "HVENVLOADER_PYTHON_PATHS=%PYTHON_SITE_PACKAGES%\_hvenvloader_python_paths.txt"
 set "VENV_PYTHON=%SCRIPT_DIR%\.venv\Scripts\python.exe"
 set "HVENVLOADER_SYNCED="
 
@@ -39,9 +41,16 @@ if exist "%HVENVLOADER_EDITABLE_PACKAGE_DIR%" (
     set "HOUDINI_PACKAGE_DIR=%PYTHON_SITE_PACKAGES%;%HVENVLOADER_EDITABLE_PACKAGE_DIR%"
 )
 
+set "HVENVLOADER_PYTHONPATH=%PYTHON_SITE_PACKAGES%"
+if exist "%HVENVLOADER_PYTHON_PATHS%" (
+    for /F "usebackq delims=" %%p in ("%HVENVLOADER_PYTHON_PATHS%") do (
+        if not "%%p"=="" set "HVENVLOADER_PYTHONPATH=!HVENVLOADER_PYTHONPATH!;%%p"
+    )
+)
+
 if defined PYTHONPATH (
-    set "PYTHONPATH=%PYTHON_SITE_PACKAGES%;%PYTHONPATH%"
+    set "PYTHONPATH=!HVENVLOADER_PYTHONPATH!;%PYTHONPATH%"
 ) else (
-    set "PYTHONPATH=%PYTHON_SITE_PACKAGES%"
+    set "PYTHONPATH=!HVENVLOADER_PYTHONPATH!"
 )
 "%HOUDINI_EXE%"

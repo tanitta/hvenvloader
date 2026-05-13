@@ -10,6 +10,7 @@ from urllib.parse import unquote, urlparse
 
 EDITABLE_PACKAGE_DIR_NAME = "_hvenvloader_houdini_packages"
 STALE_EDITABLE_BOOTSTRAP_JSON_NAME = "_hvenvloader_editable_packages.json"
+PYTHON_PATHS_NAME = "_hvenvloader_python_paths.txt"
 
 
 def _read_text(path):
@@ -218,10 +219,57 @@ def _remove_stale_editable_bootstrap_json(site_packages_path):
         bootstrap_json_path.unlink()
 
 
+def _is_absolute_path_text(text):
+    return (
+        Path(text).is_absolute()
+        or text.startswith("\\\\")
+        or (len(text) > 2 and text[1] == ":" and text[2] in ("\\", "/"))
+    )
+
+
+def _pth_python_paths(site_packages_path):
+    paths = []
+    seen = set()
+
+    for pth_path in sorted(site_packages_path.glob("*.pth")):
+        for raw_line in _read_text(pth_path).splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or line.startswith("import "):
+                continue
+
+            path = Path(line)
+            if not _is_absolute_path_text(line):
+                path = site_packages_path / line
+            if not path.exists():
+                continue
+
+            key = str(path.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            paths.append(path)
+
+    return paths
+
+
+def _write_python_paths_file(site_packages_path):
+    python_paths_path = site_packages_path / PYTHON_PATHS_NAME
+    paths = _pth_python_paths(site_packages_path)
+    if not paths:
+        if python_paths_path.is_file():
+            python_paths_path.unlink()
+        return
+
+    text = "\n".join(str(path) for path in paths) + "\n"
+    python_paths_path.write_text(text, encoding="utf-8")
+
+
 def sync_houdini_package_jsons(site_packages_path, editable_package_path=None):
     site_packages_path = Path(site_packages_path)
     if not site_packages_path.is_dir():
         return
+
+    _write_python_paths_file(site_packages_path)
 
     for package_dir in site_packages_path.iterdir():
         if package_dir.is_dir():

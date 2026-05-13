@@ -130,7 +130,8 @@ def generate_launcher(root_path):
     text = text.replace("@HVENVLOADER@", str(hvenvloader_root))
 
     launcher_path = root_path / launcher_name
-    launcher_path.write_text(text, encoding="utf-8")
+    newline = "\r\n" if launcher_name == "houdini.bat" else "\n"
+    launcher_path.write_text(text, encoding="utf-8", newline=newline)
 
     if launcher_name == "houdini.sh":
         launcher_path.chmod(launcher_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)

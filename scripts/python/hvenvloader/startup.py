@@ -1,4 +1,5 @@
 import os
+import site
 import sys
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import hou
 
 MESSAGE_HEADER = "hvenvloader"
 SESSION_SITE_PACKAGES_ATTR = "hvenvloader_venv_site_packages_path"
+SESSION_ADDED_PATHS_ATTR = "hvenvloader_venv_added_paths"
 
 
 def _is_launcher_mode():
@@ -85,18 +87,31 @@ def _session_site_packages_path():
     return getattr(hou.session, SESSION_SITE_PACKAGES_ATTR)
 
 
+def _session_added_paths():
+    if not hasattr(hou.session, SESSION_ADDED_PATHS_ATTR):
+        setattr(hou.session, SESSION_ADDED_PATHS_ATTR, [])
+    return list(getattr(hou.session, SESSION_ADDED_PATHS_ATTR))
+
+
 def unload_python_packages():
-    site_packages_path = _session_site_packages_path()
-    if not site_packages_path:
+    added_paths = _session_added_paths()
+    if not added_paths:
+        site_packages_path = _session_site_packages_path()
+        if site_packages_path:
+            added_paths = [site_packages_path]
+
+    if not added_paths:
         return
 
     sys.path = [
         path
         for path in sys.path
-        if not _same_path(path, site_packages_path)
+        if not any(_same_path(path, added_path) for added_path in added_paths)
     ]
-    _remove_modules_in_directory(site_packages_path)
+    for added_path in added_paths:
+        _remove_modules_in_directory(added_path)
     setattr(hou.session, SESSION_SITE_PACKAGES_ATTR, "")
+    setattr(hou.session, SESSION_ADDED_PATHS_ATTR, [])
 
 
 def load_python_packages():
@@ -113,10 +128,19 @@ def load_python_packages():
         setattr(hou.session, SESSION_SITE_PACKAGES_ATTR, "")
         return False
 
-    if not any(_same_path(path, site_packages_path) for path in sys.path):
-        sys.path.append(site_packages_path)
+    before_paths = list(sys.path)
+    site.addsitedir(site_packages_path)
+
+    added_paths = []
+    for path in sys.path:
+        if not any(_same_path(path, before_path) for before_path in before_paths):
+            added_paths.append(path)
+
+    if not any(_same_path(path, site_packages_path) for path in added_paths):
+        added_paths.insert(0, site_packages_path)
 
     setattr(hou.session, SESSION_SITE_PACKAGES_ATTR, site_packages_path)
+    setattr(hou.session, SESSION_ADDED_PATHS_ATTR, added_paths)
     return True
 
 

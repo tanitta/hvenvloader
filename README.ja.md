@@ -26,7 +26,7 @@ hvenvloader は、Python プロジェクトのワークフローで Houdini を�
 
 1. Houdini project を作成または開き、`$JOB` を project root directory に設定します。
 2. `venv > Init Project` shelf tool を実行します。
-3. shelf tool は `$JOB` で `uv init` と `uv sync` を実行して `.venv` を作成し、project root に launcher を書き込みます。
+3. shelf tool は `$JOB` で `uv init --package --build-backend setuptools` と `uv sync` を実行して、install 可能な `src/` layout の project と `.venv` を作成し、project root に launcher を書き込みます。
    - Windows では `houdini.bat`
    - それ以外の platform では `houdini.sh`
 4. Houdini を閉じます。
@@ -36,10 +36,10 @@ hvenvloader は、Python プロジェクトのワークフローで Houdini を�
 
 ## Shelf Tools
 
-- `venv > Init Project` は `uv init`、`uv sync` を実行し、project launcher を書き込みます。
+- `venv > Init Project` は `uv init --package --build-backend setuptools` で install 可能な setuptools package として project を初期化でき、`uv sync` を実行して project launcher を書き込みます。**Install this project into the venv** はデフォルトでオンです。オフにすると `uv init --no-package` を使用します。import package 名は project directory 名から `uv` が決定します。
 - `venv > Create NVHP` は、NVHP JSON と標準的な Houdini asset directory を含む Python package を作成する dialog を開きます。
 - `venv > Export NVHP` は、NVHP package directory を通常の Houdini Package layout に書き出す dialog を開きます。
-- `venv > uv` は、`uv init`、`uv sync`、`uv add`、`uv remove`、`uv lock`、`uv tree`、launcher 生成を行うための簡単な UI を開きます。local package の追加と `uv add --editable` にも対応しています。
+- `venv > uv` は、`uv init`、`uv sync`、`uv add`、`uv remove`、`uv lock`、`uv tree`、launcher 生成を行うための簡単な UI を開きます。`uv init` には同じ project install option があり、local package の追加と `uv add --editable` にも対応しています。
 
 ## Launcher の挙動
 

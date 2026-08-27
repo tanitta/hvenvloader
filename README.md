@@ -26,7 +26,7 @@ The `hvenvloader.json` file registers this package with Houdini. See also [Houdi
 
 1. Create or open a Houdini project and set `$JOB` to the project root directory.
 2. Run the `venv > Init Project` shelf tool.
-3. The shelf tool runs `uv init` and `uv sync` in `$JOB`, creates `.venv`, and writes a launcher into the project root:
+3. The shelf tool runs `uv init --package --build-backend setuptools` and `uv sync` in `$JOB`, creates an installable `src/`-layout project and `.venv`, and writes a launcher into the project root:
    - `houdini.bat` on Windows
    - `houdini.sh` on other platforms
 4. Close Houdini.
@@ -36,10 +36,10 @@ The generated launcher is part of the project. Keep it next to the project's `.v
 
 ## Shelf Tools
 
-- `venv > Init Project` runs `uv init`, `uv sync`, and writes the project launcher.
+- `venv > Init Project` can initialize the project as an installable setuptools package with `uv init --package --build-backend setuptools`, runs `uv sync`, and writes the project launcher. The **Install this project into the venv** option is enabled by default; disable it to use `uv init --no-package`. The import package name is derived from the project directory name by `uv`.
 - `venv > Create NVHP` opens a dialog for creating a Python package that contains an NVHP JSON and standard Houdini asset directories.
 - `venv > Export NVHP` opens a dialog for exporting an NVHP package directory to a vanilla Houdini Package layout.
-- `venv > uv` opens a small UI for `uv init`, `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv tree`, and launcher generation. It also supports adding local packages and `uv add --editable`.
+- `venv > uv` opens a small UI for `uv init`, `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv tree`, and launcher generation. Its `uv init` action has the same project-install option. It also supports adding local packages and `uv add --editable`.
 
 ## Launcher Behavior
 

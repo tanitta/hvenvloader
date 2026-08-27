@@ -77,6 +77,20 @@ def _dialog_button(QtWidgets, name):
     return getattr(QtWidgets.QDialogButtonBox, name)
 
 
+def _dialog_button_role(QtWidgets, name):
+    button_role = getattr(QtWidgets.QDialogButtonBox, "ButtonRole", None)
+    if button_role is not None and hasattr(button_role, name):
+        return getattr(button_role, name)
+    return getattr(QtWidgets.QDialogButtonBox, name)
+
+
+def _message_box_button(QtWidgets, name):
+    standard_button = getattr(QtWidgets.QMessageBox, "StandardButton", None)
+    if standard_button is not None and hasattr(standard_button, name):
+        return getattr(standard_button, name)
+    return getattr(QtWidgets.QMessageBox, name)
+
+
 def _display_message(message, severity=None):
     hou = _hou()
     if severity is None:
@@ -116,27 +130,45 @@ def python_version_tag():
     return "{}.{}".format(sys.version_info.major, sys.version_info.minor)
 
 
+def uv_init_args(install_project=True):
+    args = ["init"]
+    if install_project:
+        args.extend(["--package", "--build-backend", "setuptools"])
+    else:
+        args.append("--no-package")
+    args.extend(["-p", python_version_tag()])
+    return args
+
+
+def launcher_name():
+    if platform.system() == "Windows":
+        return "houdini.bat"
+    return "houdini.sh"
+
+
+def launcher_path(root_path):
+    return Path(root_path) / launcher_name()
+
+
 def generate_launcher(root_path):
     root_path = Path(root_path)
-    launcher_name = "houdini.sh"
-    if platform.system() == "Windows":
-        launcher_name = "houdini.bat"
+    current_launcher_name = launcher_name()
 
     hvenvloader_root = _hvenvloader_root()
-    template_path = hvenvloader_root / launcher_name
+    template_path = hvenvloader_root / current_launcher_name
     text = template_path.read_text(encoding="utf-8")
     text = text.replace("@HOUDINI_EXE@", sys.executable)
     text = text.replace("@HOUDINI_USER_PREF_DIR@", _hou().getenv("HOUDINI_USER_PREF_DIR") or "")
     text = text.replace("@HVENVLOADER@", str(hvenvloader_root))
 
-    launcher_path = root_path / launcher_name
-    newline = "\r\n" if launcher_name == "houdini.bat" else "\n"
-    launcher_path.write_text(text, encoding="utf-8", newline=newline)
+    output_launcher_path = root_path / current_launcher_name
+    newline = "\r\n" if current_launcher_name == "houdini.bat" else "\n"
+    output_launcher_path.write_text(text, encoding="utf-8", newline=newline)
 
-    if launcher_name == "houdini.sh":
-        launcher_path.chmod(launcher_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    if current_launcher_name == "houdini.sh":
+        output_launcher_path.chmod(output_launcher_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
-    return launcher_path
+    return output_launcher_path
 
 
 def _uv_subprocess_env():
@@ -496,21 +528,216 @@ def unload_houdini_packages_for_removed_package(root_path, package_requirement):
     return messages
 
 
-def init_python_project(root_path):
-    run_uv_checked(["init", "-p", python_version_tag()], root_path)
+def init_python_project(root_path, install_project=True):
+    run_uv_checked(uv_init_args(install_project), root_path)
     run_uv_checked(["sync"], root_path)
 
 
 def init_project_tool():
-    try:
-        root_path = _project_root_from_job()
-        launcher_path = generate_launcher(root_path)
-        init_python_project(root_path)
-    except Exception as exc:
-        _display_error(str(exc))
-        return
+    QtCore, QtWidgets = _qt_modules()
 
-    _display_message("Project initialized.\n\nLauncher:\n{}".format(launcher_path))
+    class Dialog(QtWidgets.QDialog):
+        def __init__(self, parent=None):
+            super(Dialog, self).__init__(parent)
+            self.setWindowTitle("Init Project")
+            self.setMinimumSize(680, 360)
+
+            layout = QtWidgets.QVBoxLayout(self)
+
+            form = QtWidgets.QFormLayout()
+            layout.addLayout(form)
+
+            self.root_edit = QtWidgets.QLineEdit(str(_default_project_root()))
+            self.root_edit.editingFinished.connect(self._refresh)
+            browse_button = QtWidgets.QPushButton("...")
+            browse_button.clicked.connect(self._browse_root)
+            refresh_button = QtWidgets.QPushButton("Refresh")
+            refresh_button.clicked.connect(self._refresh)
+
+            root_layout = QtWidgets.QHBoxLayout()
+            root_layout.addWidget(self.root_edit)
+            root_layout.addWidget(browse_button)
+            root_layout.addWidget(refresh_button)
+            form.addRow("Project Root", root_layout)
+
+            actions_group = QtWidgets.QGroupBox("Actions")
+            actions_layout = QtWidgets.QGridLayout(actions_group)
+            actions_layout.addWidget(QtWidgets.QLabel("Run"), 0, 0)
+            actions_layout.addWidget(QtWidgets.QLabel("Status"), 0, 1)
+
+            self.init_check = QtWidgets.QCheckBox("uv init")
+            self.init_status = QtWidgets.QLabel()
+            actions_layout.addWidget(self.init_check, 1, 0)
+            actions_layout.addWidget(self.init_status, 1, 1)
+
+            self.install_project_check = QtWidgets.QCheckBox(
+                "Install this project into the venv (--package)"
+            )
+            self.install_project_check.setChecked(True)
+            self.install_project_check.setToolTip(
+                "Create an installable src-layout setuptools package. "
+                "uv sync will install this project into .venv."
+            )
+            self.init_check.toggled.connect(self.install_project_check.setEnabled)
+            actions_layout.addWidget(self.install_project_check, 2, 0, 1, 2)
+
+            self.sync_check = QtWidgets.QCheckBox("uv sync")
+            self.sync_status = QtWidgets.QLabel()
+            actions_layout.addWidget(self.sync_check, 3, 0)
+            actions_layout.addWidget(self.sync_status, 3, 1)
+
+            self.launcher_check = QtWidgets.QCheckBox("Write launcher")
+            self.launcher_status = QtWidgets.QLabel()
+            actions_layout.addWidget(self.launcher_check, 4, 0)
+            actions_layout.addWidget(self.launcher_status, 4, 1)
+            actions_layout.setColumnStretch(1, 1)
+            layout.addWidget(actions_group)
+
+            self.output_edit = QtWidgets.QPlainTextEdit()
+            self.output_edit.setReadOnly(True)
+            layout.addWidget(self.output_edit)
+
+            buttons = QtWidgets.QDialogButtonBox()
+            run_button = buttons.addButton(
+                "Run Selected",
+                _dialog_button_role(QtWidgets, "AcceptRole"),
+            )
+            run_button.clicked.connect(self._run_selected)
+            close_button = buttons.addButton(_dialog_button(QtWidgets, "Close"))
+            close_button.clicked.connect(self.reject)
+            layout.addWidget(buttons)
+
+            self._refresh()
+
+        def _browse_root(self):
+            selected = QtWidgets.QFileDialog.getExistingDirectory(
+                self,
+                "Select Project Root",
+                self.root_edit.text(),
+            )
+            if selected:
+                self.root_edit.setText(selected)
+                self._refresh()
+
+        def _project_root(self):
+            return Path(self.root_edit.text())
+
+        def _status_text(self, label, path):
+            if path.exists():
+                return "{}: Exists ({})".format(label, path)
+            return "{}: New ({})".format(label, path)
+
+        def _refresh(self):
+            root_path = self._project_root()
+            pyproject_path = root_path / "pyproject.toml"
+            venv_path = root_path / ".venv"
+            output_launcher_path = launcher_path(root_path)
+
+            self.init_status.setText(self._status_text("pyproject.toml", pyproject_path))
+            self.sync_status.setText(self._status_text(".venv", venv_path))
+            self.launcher_status.setText(
+                self._status_text(output_launcher_path.name, output_launcher_path)
+            )
+
+            self.init_check.setChecked(not pyproject_path.exists())
+            self.sync_check.setChecked(not venv_path.exists())
+            self.launcher_check.setChecked(not output_launcher_path.exists())
+
+        def _append_output(self, text):
+            self.output_edit.appendPlainText(text.rstrip())
+            self.output_edit.verticalScrollBar().setValue(
+                self.output_edit.verticalScrollBar().maximum()
+            )
+
+        def _run_uv(self, args, root_path):
+            self._append_output("$ uv {}".format(_format_command(args)))
+            result = run_uv(args, root_path)
+            output = (result.stdout or "") + (result.stderr or "")
+            if output.strip():
+                self._append_output(output)
+            hint = _uv_failure_hint(output)
+            if result.returncode != 0 and hint:
+                self._append_output(hint)
+            self._append_output("exit code: {}\n".format(result.returncode))
+            return result.returncode == 0
+
+        def _run_selected(self):
+            root_path = self._project_root()
+            if not root_path.is_dir():
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Init Project",
+                    "Project root does not exist:\n{}".format(root_path),
+                )
+                return
+
+            run_init = self.init_check.isChecked()
+            run_sync = self.sync_check.isChecked()
+            write_launcher = self.launcher_check.isChecked()
+            if not (run_init or run_sync or write_launcher):
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Init Project",
+                    "No actions are selected.",
+                )
+                return
+
+            pyproject_path = root_path / "pyproject.toml"
+            if run_init and pyproject_path.exists():
+                answer = QtWidgets.QMessageBox.question(
+                    self,
+                    "Init Project",
+                    "pyproject.toml already exists. Run uv init anyway?\n{}".format(
+                        pyproject_path
+                    ),
+                )
+                if answer != _message_box_button(QtWidgets, "Yes"):
+                    return
+
+            if run_sync and not run_init and not pyproject_path.is_file():
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Init Project",
+                    "uv sync needs pyproject.toml. Select uv init or create pyproject.toml first.",
+                )
+                return
+
+            output_launcher_path = launcher_path(root_path)
+            if write_launcher and output_launcher_path.exists():
+                answer = QtWidgets.QMessageBox.question(
+                    self,
+                    "Init Project",
+                    "Overwrite existing launcher?\n{}".format(output_launcher_path),
+                )
+                if answer != _message_box_button(QtWidgets, "Yes"):
+                    return
+
+            try:
+                if run_init and not self._run_uv(
+                    uv_init_args(self.install_project_check.isChecked()), root_path
+                ):
+                    self._refresh()
+                    return
+                if run_sync and not self._run_uv(["sync"], root_path):
+                    self._refresh()
+                    return
+                if write_launcher:
+                    written_launcher_path = generate_launcher(root_path)
+                    self._append_output("Wrote launcher: {}\n".format(written_launcher_path))
+            except Exception as exc:
+                self._append_output(str(exc))
+                QtWidgets.QMessageBox.critical(self, "Init Project", str(exc))
+                self._refresh()
+                return
+
+            self._refresh()
+            QtWidgets.QMessageBox.information(
+                self,
+                "Init Project",
+                "Selected actions completed.",
+            )
+
+    _exec_dialog(Dialog(_dialog_parent()))
 
 
 def _safe_import_package_name(name):
@@ -1044,8 +1271,17 @@ def uv_tool():
 
             project_group = QtWidgets.QGroupBox("Project")
             project_layout = QtWidgets.QGridLayout(project_group)
+            self.install_project_check = QtWidgets.QCheckBox(
+                "Install this project into the venv (--package)"
+            )
+            self.install_project_check.setChecked(True)
+            self.install_project_check.setToolTip(
+                "Create an installable src-layout setuptools package. "
+                "uv sync will install this project into .venv."
+            )
+            project_layout.addWidget(self.install_project_check, 0, 0, 1, 2)
             project_actions = [
-                ("Create pyproject (uv init)", self._init),
+                ("Create project (uv init)", self._init),
                 ("Sync venv (uv sync)", lambda: self._run(["sync"])),
                 ("Update lockfile (uv lock)", lambda: self._run(["lock"])),
                 ("Show dependency tree (uv tree)", lambda: self._run(["tree"])),
@@ -1054,7 +1290,7 @@ def uv_tool():
             for index, (label, callback) in enumerate(project_actions):
                 button = QtWidgets.QPushButton(label)
                 button.clicked.connect(callback)
-                project_layout.addWidget(button, index // 2, index % 2)
+                project_layout.addWidget(button, index // 2 + 1, index % 2)
             layout.addWidget(project_group)
 
             package_group = QtWidgets.QGroupBox("Package")
@@ -1154,7 +1390,7 @@ def uv_tool():
             return result
 
         def _init(self):
-            self._run(["init", "-p", python_version_tag()])
+            self._run(uv_init_args(self.install_project_check.isChecked()))
 
         def _add(self):
             package = self.package_edit.text().strip()

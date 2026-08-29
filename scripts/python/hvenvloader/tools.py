@@ -37,7 +37,8 @@ VANILLA_HOUDINI_PACKAGE_DIRS = frozenset(
         "viewer_states",
     )
 )
-EDITABLE_HOUDINI_PACKAGE_DIR_NAME = "_hvenvloader_houdini_packages"
+HVENVLOADER_MANAGED_DIR_NAME = ".hvenvloader"
+EDITABLE_HOUDINI_PACKAGE_DIR_NAME = "editable_packages"
 STALE_EDITABLE_HOUDINI_BOOTSTRAP_JSON_NAME = "_hvenvloader_editable_packages.json"
 
 
@@ -349,7 +350,7 @@ def _path_from_file_url(url):
     return Path(path)
 
 
-def _direct_url_path(dist_info_path):
+def _editable_direct_url_path(dist_info_path):
     direct_url_path = dist_info_path / "direct_url.json"
     if not direct_url_path.is_file():
         return None
@@ -357,6 +358,9 @@ def _direct_url_path(dist_info_path):
     try:
         data = json.loads(direct_url_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
+        return None
+
+    if not data.get("dir_info", {}).get("editable"):
         return None
 
     url = data.get("url")
@@ -376,7 +380,7 @@ def _candidate_houdini_package_dirs(site_packages_path, package_name):
         for top_level in _top_level_packages(dist_info_path):
             package_dirs.add(site_packages_path / top_level)
 
-        direct_url_root = _direct_url_path(dist_info_path)
+        direct_url_root = _editable_direct_url_path(dist_info_path)
         if direct_url_root:
             for top_level in _top_level_packages(dist_info_path):
                 package_dirs.add(direct_url_root / "src" / top_level)
@@ -397,20 +401,24 @@ def _is_relative_to(path, parent):
         return False
 
 
-def _copied_json_path_for_package(site_packages_path, package_dir):
-    if _is_relative_to(package_dir, site_packages_path):
-        return site_packages_path / "{}.json".format(package_dir.name)
+def _editable_overlay_path(root_path):
     return (
-        site_packages_path
+        Path(root_path)
+        / HVENVLOADER_MANAGED_DIR_NAME
         / EDITABLE_HOUDINI_PACKAGE_DIR_NAME
-        / "{}.json".format(package_dir.name)
     )
 
 
-def _editable_link_path_for_package(site_packages_path, package_dir):
+def _copied_json_path_for_package(root_path, site_packages_path, package_dir):
+    if _is_relative_to(package_dir, site_packages_path):
+        return site_packages_path / "{}.json".format(package_dir.name)
+    return _editable_overlay_path(root_path) / "{}.json".format(package_dir.name)
+
+
+def _editable_link_path_for_package(root_path, site_packages_path, package_dir):
     if _is_relative_to(package_dir, site_packages_path):
         return None
-    return site_packages_path / EDITABLE_HOUDINI_PACKAGE_DIR_NAME / package_dir.name
+    return _editable_overlay_path(root_path) / package_dir.name
 
 
 def _stale_editable_bootstrap_json_path(site_packages_path):
@@ -436,8 +444,8 @@ def _remove_generated_package_link(link_path, package_dir):
     return True
 
 
-def _remove_editable_overlay_if_empty(site_packages_path, hou):
-    overlay_path = site_packages_path / EDITABLE_HOUDINI_PACKAGE_DIR_NAME
+def _remove_editable_overlay_if_empty(root_path, site_packages_path, hou):
+    overlay_path = _editable_overlay_path(root_path)
     if not overlay_path.is_dir():
         return []
 
@@ -478,8 +486,16 @@ def _houdini_package_entries_for_package(root_path, package_requirement):
     for site_packages_path in _site_packages_paths(root_path):
         for package_dir in _candidate_houdini_package_dirs(site_packages_path, package_name):
             source_json_path = package_dir / "hpackage.json"
-            copied_json_path = _copied_json_path_for_package(site_packages_path, package_dir)
-            link_path = _editable_link_path_for_package(site_packages_path, package_dir)
+            copied_json_path = _copied_json_path_for_package(
+                root_path,
+                site_packages_path,
+                package_dir,
+            )
+            link_path = _editable_link_path_for_package(
+                root_path,
+                site_packages_path,
+                package_dir,
+            )
             key = (str(source_json_path), str(copied_json_path))
             if key in seen:
                 continue
@@ -523,7 +539,9 @@ def unload_houdini_packages_for_removed_package(root_path, package_requirement):
         messages.append("Removed copied NVHP JSON: {}".format(copied_json_path))
         if _remove_generated_package_link(link_path, package_dir):
             messages.append("Removed editable NVHP link: {}".format(link_path))
-            messages.extend(_remove_editable_overlay_if_empty(site_packages_path, hou))
+            messages.extend(
+                _remove_editable_overlay_if_empty(root_path, site_packages_path, hou)
+            )
 
     return messages
 

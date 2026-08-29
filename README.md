@@ -48,6 +48,9 @@ The generated launcher is part of the project. Keep it next to the project's `.v
 ```text
 project-root/
   .venv/
+  .hvenvloader/
+    editable_packages/
+  packages/                 # optional, user-managed Houdini package JSONs
   houdini.bat or houdini.sh
   your_project.hip
 ```
@@ -56,12 +59,16 @@ When the launcher starts Houdini, it:
 
 1. Finds the project's `.venv` relative to the launcher file.
 2. Sets `PYTHONPATH` to the `.venv` `site-packages` directory.
-3. Sets `HOUDINI_PACKAGE_DIR` to the `.venv` `site-packages` directory, plus a generated editable-package directory when needed.
+3. Builds `HOUDINI_PACKAGE_DIR` in this order: an existing `<project-root>/packages`, the `.venv` `site-packages` directory, then an existing `<project-root>/.hvenvloader/editable_packages` overlay.
 4. Syncs `hpackage.json` files from installed Python packages into Houdini package search directories so Houdini can discover them. Editable local installs keep the original JSON content and use a generated static overlay plus a directory link back to the source package.
 5. Sets `HVENVLOADER_LAUNCHER=1` so the non-launcher fallback does not run.
 6. Starts Houdini with the project virtual environment available.
 
 If you do not use the shelf tool, copy the appropriate launcher (`houdini.bat` or `houdini.sh`) into your project root manually and edit the Houdini executable path and `HOUDINI_USER_PREF_DIR` values for your environment.
+
+The project root used at launch time is always the directory containing the launcher. The shelf tools use `$JOB` only as the initial project-root value in their UI. The `.hvenvloader/` directory is reserved for generated state managed by hvenvloader; its `editable_packages/` contents may be rebuilt or removed and should normally be excluded from version control. The optional `<project-root>/packages/` directory is user-managed: the launcher reads Houdini package JSONs from it but hvenvloader never creates, synchronizes, or cleans its contents.
+
+After upgrading hvenvloader, regenerate the launcher in each existing project. An old launcher may continue to use the legacy editable overlay path inside `.venv`.
 
 ## Non-Launcher Behavior
 
@@ -87,7 +94,7 @@ An NVHP is intentionally hvenvloader-native. It is not a standalone vanilla Houd
 
 The important convention is that each Python import package that provides an NVHP contains a file named `hpackage.json`. The launcher scans `.venv` metadata and package directories, and when it finds `<package>/hpackage.json`, it exposes that JSON through `HOUDINI_PACKAGE_DIR` so Houdini can discover it.
 
-Regular installs place the import package under `site-packages`, so the launcher copies `hpackage.json` directly to `site-packages/<package>.json`. Editable local installs keep the import package in the source checkout, so the launcher reads `.dist-info/direct_url.json` and `top_level.txt`, recreates `.venv/.../site-packages/_hvenvloader_houdini_packages/`, copies `hpackage.json` there unchanged, and creates a generated directory link named `<package>` that points back to the source package directory. The launcher adds that generated directory directly to `HOUDINI_PACKAGE_DIR`.
+Regular installs place the import package under `site-packages`, so the launcher copies `hpackage.json` directly to `site-packages/<package>.json`. Editable local installs keep the import package in the source checkout, so the launcher reads `.dist-info/direct_url.json` and `top_level.txt`, recreates `<project-root>/.hvenvloader/editable_packages/`, copies `hpackage.json` there unchanged as `<package>.json`, and creates a sibling directory link named `<package>` that points back to the source package directory. The launcher adds this generated overlay directly to `HOUDINI_PACKAGE_DIR` while continuing to include `.venv` `site-packages` for regular installs. When no editable NVHP remains, hvenvloader removes the generated overlay. A recognized legacy `.venv/.../site-packages/_hvenvloader_houdini_packages/` overlay is also cleaned up, but is never added to `HOUDINI_PACKAGE_DIR` by a new launcher.
 
 Because NVHPs rely on this `.venv` layout, install them with uv and start Houdini through the generated hvenvloader launcher. Installing the source checkout directly as a regular Houdini Package is not supported. This tradeoff keeps imports consistent between Houdini, `uv run`, tests, and build scripts.
 

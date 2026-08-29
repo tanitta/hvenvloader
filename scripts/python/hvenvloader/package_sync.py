@@ -2,13 +2,14 @@ import json
 import locale
 import os
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 
-EDITABLE_PACKAGE_DIR_NAME = "_hvenvloader_houdini_packages"
+LEGACY_EDITABLE_PACKAGE_DIR_NAME = "_hvenvloader_houdini_packages"
 STALE_EDITABLE_BOOTSTRAP_JSON_NAME = "_hvenvloader_editable_packages.json"
 PYTHON_PATHS_NAME = "_hvenvloader_python_paths.txt"
 
@@ -130,7 +131,7 @@ def _editable_package_dirs(dist_info_path):
 
 
 def _sync_regular_package(site_packages_path, package_dir):
-    if package_dir.name == EDITABLE_PACKAGE_DIR_NAME:
+    if package_dir.name == LEGACY_EDITABLE_PACKAGE_DIR_NAME:
         return
 
     source_json_path = package_dir / "hpackage.json"
@@ -141,8 +142,29 @@ def _sync_regular_package(site_packages_path, package_dir):
     shutil.copyfile(str(source_json_path), str(destination_json_path))
 
 
+def _is_directory_link(path):
+    if path.is_symlink():
+        return True
+
+    try:
+        file_attributes = path.lstat().st_file_attributes
+    except (AttributeError, OSError):
+        return False
+    return bool(file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
 def _clear_editable_package_dir(editable_package_path):
-    editable_package_path.mkdir(parents=True, exist_ok=True)
+    if editable_package_path.exists() or editable_package_path.is_symlink():
+        if _is_directory_link(editable_package_path) or not editable_package_path.is_dir():
+            print(
+                "hvenvloader: refusing to clear editable package path because "
+                "it is not a managed directory: {}".format(editable_package_path),
+                file=sys.stderr,
+            )
+            return False
+    else:
+        editable_package_path.mkdir(parents=True)
+
     for child in editable_package_path.iterdir():
         try:
             if child.is_dir() and not child.is_symlink():
@@ -157,6 +179,39 @@ def _clear_editable_package_dir(editable_package_path):
                 ),
                 file=sys.stderr,
             )
+    return True
+
+
+def _remove_legacy_editable_package_dir(site_packages_path):
+    legacy_path = site_packages_path / LEGACY_EDITABLE_PACKAGE_DIR_NAME
+    if not legacy_path.is_dir() or _is_directory_link(legacy_path):
+        return
+
+    children = list(legacy_path.iterdir())
+    if any(
+        not (child.is_file() and child.suffix == ".json")
+        and not _is_directory_link(child)
+        for child in children
+    ):
+        print(
+            "hvenvloader: not removing legacy editable package directory because "
+            "it contains an unrecognized entry: {}".format(legacy_path),
+            file=sys.stderr,
+        )
+        return
+
+    if not _clear_editable_package_dir(legacy_path):
+        return
+    try:
+        legacy_path.rmdir()
+    except OSError as exc:
+        print(
+            "hvenvloader: failed to remove legacy editable package directory {}: {}".format(
+                legacy_path,
+                exc,
+            ),
+            file=sys.stderr,
+        )
 
 
 def _same_resolved_path(left, right):
@@ -270,6 +325,7 @@ def sync_houdini_package_jsons(site_packages_path, editable_package_path=None):
         return
 
     _write_python_paths_file(site_packages_path)
+    _remove_legacy_editable_package_dir(site_packages_path)
 
     for package_dir in site_packages_path.iterdir():
         if package_dir.is_dir():
@@ -290,8 +346,10 @@ def sync_houdini_package_jsons(site_packages_path, editable_package_path=None):
             editable_package_dirs.append(package_dir)
 
     if not editable_package_dirs:
-        if editable_package_path.exists():
-            _clear_editable_package_dir(editable_package_path)
+        if editable_package_path.exists() or editable_package_path.is_symlink():
+            if not _clear_editable_package_dir(editable_package_path):
+                _remove_stale_editable_bootstrap_json(site_packages_path)
+                return
             try:
                 editable_package_path.rmdir()
             except OSError:
@@ -300,7 +358,8 @@ def sync_houdini_package_jsons(site_packages_path, editable_package_path=None):
         return
 
     _remove_stale_editable_bootstrap_json(site_packages_path)
-    _clear_editable_package_dir(editable_package_path)
+    if not _clear_editable_package_dir(editable_package_path):
+        return
 
     synced_count = 0
     for package_dir in editable_package_dirs:

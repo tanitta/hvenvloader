@@ -48,6 +48,9 @@ hvenvloader は、Python プロジェクトのワークフローで Houdini を�
 ```text
 project-root/
   .venv/
+  .hvenvloader/
+    editable_packages/
+  packages/                 # 任意、ユーザー管理の Houdini package JSON
   houdini.bat or houdini.sh
   your_project.hip
 ```
@@ -56,12 +59,16 @@ launcher から Houdini を起動すると、次の処理を行います。
 
 1. launcher file からの相対位置で project の `.venv` を探します。
 2. `PYTHONPATH` を `.venv` の `site-packages` directory に設定します。
-3. `HOUDINI_PACKAGE_DIR` を `.venv` の `site-packages` directory に設定し、必要な場合は生成済み editable package directory も追加します。
+3. `HOUDINI_PACKAGE_DIR` を、存在する `<project-root>/packages`、`.venv` の `site-packages`、存在する `<project-root>/.hvenvloader/editable_packages` overlay の順で組み立てます。
 4. インストール済み Python package 内の `hpackage.json` を Houdini package search directory へ同期し、Houdini が discovery できるようにします。editable local install では元の JSON 内容を保持し、生成済みの静的 overlay と source package directory への directory link を使います。
 5. `HVENVLOADER_LAUNCHER=1` を設定し、launcher を使わない場合の fallback が実行されないようにします。
 6. project の virtual environment を利用できる状態で Houdini を起動します。
 
 shelf tool を使わない場合は、適切な launcher (`houdini.bat` または `houdini.sh`) を project root に手動でコピーし、自分の環境に合わせて Houdini executable path と `HOUDINI_USER_PREF_DIR` の値を編集してください。
+
+launcher 実行時の project root は、常に launcher 自身が置かれている directory です。shelf tool は UI の project root 初期値としてのみ `$JOB` を使います。`.hvenvloader/` directory は hvenvloader が管理する生成物専用であり、その `editable_packages/` の内容は再生成または削除されることがあるため、通常は version control の対象外にしてください。任意の `<project-root>/packages/` directory はユーザー管理です。launcher はそこにある Houdini package JSON を読み込みますが、hvenvloader はその内容を生成・同期・cleanup しません。
+
+hvenvloader の更新後、既存 project では launcher を再生成してください。古い launcher を使い続ける場合、`.venv` 内の旧 editable overlay path を使う可能性があります。
 
 ## Launcher を使わない場合の挙動
 
@@ -87,7 +94,7 @@ NVHP は意図的に hvenvloader 専用の format です。単体で通常の Ho
 
 重要な convention は、NVHP を提供する各 Python import package が `hpackage.json` という file を含むことです。launcher は `.venv` の metadata と package directory を scan し、`<package>/hpackage.json` を見つけると、その JSON を `HOUDINI_PACKAGE_DIR` 経由で Houdini が discovery できるようにします。
 
-通常 install では import package が `site-packages` 配下に配置されるため、launcher は `hpackage.json` を `site-packages/<package>.json` に直接コピーします。editable local install では import package が source checkout 側に残るため、launcher は `.dist-info/direct_url.json` と `top_level.txt` を読み、`.venv/.../site-packages/_hvenvloader_houdini_packages/` を起動時に作り直し、そこに `hpackage.json` を内容未変更でコピーし、source package directory を指す `<package>` という生成済み directory link を作成します。launcher はその生成済み directory を `HOUDINI_PACKAGE_DIR` に直接追加します。
+通常 install では import package が `site-packages` 配下に配置されるため、launcher は `hpackage.json` を `site-packages/<package>.json` に直接コピーします。editable local install では import package が source checkout 側に残るため、launcher は `.dist-info/direct_url.json` と `top_level.txt` を読み、`<project-root>/.hvenvloader/editable_packages/` を起動時に作り直します。そこへ `hpackage.json` を内容未変更の `<package>.json` としてコピーし、その隣に source package directory を指す `<package>` directory link を作成します。launcher は通常 install 用の `.venv` `site-packages` を引き続き含めながら、この生成済み overlay を `HOUDINI_PACKAGE_DIR` に直接追加します。editable NVHP がなくなると、hvenvloader は生成済み overlay を削除します。旧 `.venv/.../site-packages/_hvenvloader_houdini_packages/` も hvenvloader の旧生成物と判断できる場合は cleanup しますが、新しい launcher はこの旧 path を `HOUDINI_PACKAGE_DIR` に追加しません。
 
 NVHP はこの `.venv` layout に依存するため、uv で install し、生成された hvenvloader launcher から Houdini を起動してください。source checkout を通常の Houdini Package として直接導入する使い方はサポートしません。この割り切りにより、Houdini、`uv run`、test、build script の間で import の挙動を揃えます。
 

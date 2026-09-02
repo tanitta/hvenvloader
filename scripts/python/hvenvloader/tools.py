@@ -1,4 +1,5 @@
 import json
+import hashlib
 import locale
 import os
 import platform
@@ -8,6 +9,7 @@ import shlex
 import stat
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -40,6 +42,8 @@ VANILLA_HOUDINI_PACKAGE_DIRS = frozenset(
 HVENVLOADER_MANAGED_DIR_NAME = ".hvenvloader"
 EDITABLE_HOUDINI_PACKAGE_DIR_NAME = "editable_packages"
 STALE_EDITABLE_HOUDINI_BOOTSTRAP_JSON_NAME = "_hvenvloader_editable_packages.json"
+LOCAL_PACKAGE_STATE_NAME = "local_packages.json"
+LOCAL_PACKAGE_DIRECTORY_MODES = ("junction", "copy", "none")
 
 
 def _hou():
@@ -398,6 +402,20 @@ def _is_relative_to(path, parent):
         Path(path).resolve().relative_to(Path(parent).resolve())
         return True
     except (OSError, ValueError):
+        return False
+
+
+def _absolute_path_without_links(path):
+    return Path(os.path.abspath(os.path.expanduser(str(path))))
+
+
+def _is_relative_to_without_links(path, parent):
+    try:
+        _absolute_path_without_links(path).relative_to(
+            _absolute_path_without_links(parent)
+        )
+        return True
+    except ValueError:
         return False
 
 
@@ -1262,6 +1280,710 @@ def export_nvhp_tool():
                 ),
             )
             self.accept()
+
+    _exec_dialog(Dialog(_dialog_parent()))
+
+
+def _local_package_state_path(project_root):
+    return (
+        Path(project_root)
+        / HVENVLOADER_MANAGED_DIR_NAME
+        / LOCAL_PACKAGE_STATE_NAME
+    )
+
+
+def _read_local_package_state(project_root):
+    state_path = _local_package_state_path(project_root)
+    if not state_path.is_file():
+        return {"version": 1, "packages": {}}
+
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError("Could not read local package state: {}".format(exc))
+
+    if not isinstance(state, dict) or not isinstance(state.get("packages"), dict):
+        raise ValueError("Invalid local package state: {}".format(state_path))
+    return state
+
+
+def _write_local_package_state(project_root, state):
+    state_path = _local_package_state_path(project_root)
+    packages = state.get("packages", {})
+    if not packages:
+        if state_path.is_file():
+            state_path.unlink()
+        try:
+            state_path.parent.rmdir()
+        except OSError:
+            pass
+        return
+
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = state_path.with_name(
+        ".{}.{}.tmp".format(state_path.name, uuid.uuid4().hex)
+    )
+    temporary_path.write_text(
+        json.dumps(state, indent=4, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(str(temporary_path), str(state_path))
+
+
+def _validate_local_package_name(package_name):
+    package_name = str(package_name).strip()
+    if not package_name:
+        raise ValueError("Package name is required.")
+    if package_name in (".", "..") or Path(package_name).name != package_name:
+        raise ValueError("Package name must be a single directory name.")
+    if any(character in package_name for character in '<>:"/\\|?*'):
+        raise ValueError("Package name contains characters that are not valid on Windows.")
+    return package_name
+
+
+def _local_package_paths(project_root, package_name):
+    project_root = Path(project_root)
+    package_name = _validate_local_package_name(package_name)
+    packages_dir = project_root / "packages"
+    return {
+        "packages_dir": packages_dir,
+        "package_dir": packages_dir / package_name,
+        "package_json": packages_dir / "{}.json".format(package_name),
+    }
+
+
+def _is_directory_link(path):
+    path = Path(path)
+    if path.is_symlink():
+        return True
+    try:
+        attributes = os.lstat(str(path)).st_file_attributes
+        reparse_point = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        return bool(attributes & reparse_point)
+    except (AttributeError, OSError):
+        return False
+
+
+def _remove_directory_link(path):
+    path = Path(path)
+    if path.is_dir() and not path.is_symlink():
+        path.rmdir()
+    else:
+        path.unlink()
+
+
+def _remove_local_package_path(path):
+    path = Path(path)
+    if not path.exists() and not path.is_symlink():
+        return
+    if _is_directory_link(path):
+        _remove_directory_link(path)
+    elif path.is_dir():
+        shutil.rmtree(str(path))
+    else:
+        path.unlink()
+
+
+def _create_directory_junction(source_dir, destination_dir):
+    source_dir = Path(source_dir).resolve()
+    destination_dir = Path(destination_dir)
+    destination_dir.parent.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        result = subprocess.run(
+            ["cmd.exe", "/d", "/c", "mklink", "/J", str(destination_dir), str(source_dir)],
+            capture_output=True,
+            check=False,
+        )
+        result = _decode_completed_process_output(result)
+        if result.returncode != 0:
+            output = ((result.stdout or "") + (result.stderr or "")).strip()
+            raise RuntimeError(output or "Could not create directory junction.")
+    else:
+        destination_dir.symlink_to(source_dir, target_is_directory=True)
+
+
+def _validate_houdini_package_json(package_json):
+    package_json = Path(package_json)
+    if not package_json.is_file():
+        raise ValueError("Package JSON does not exist: {}".format(package_json))
+    try:
+        value = json.loads(package_json.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError("Invalid package JSON {}: {}".format(package_json, exc))
+    if not isinstance(value, dict):
+        raise ValueError("Package JSON must contain a JSON object: {}".format(package_json))
+    return value
+
+
+def detect_houdini_package_jsons(source_dir):
+    source_dir = Path(source_dir)
+    if not source_dir.is_dir():
+        return []
+
+    candidates = list(source_dir.glob("*.json"))
+    priorities = {
+        "{}.json".format(source_dir.name).lower(): 0,
+        "hpackage.json": 1,
+    }
+
+    def sort_key(path):
+        return (priorities.get(path.name.lower(), 2), path.name.lower())
+
+    valid_candidates = []
+    for candidate in sorted(candidates, key=sort_key):
+        try:
+            _validate_houdini_package_json(candidate)
+        except ValueError:
+            continue
+        valid_candidates.append(candidate)
+    return valid_candidates
+
+
+def _file_sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def local_package_status(project_root, package_name, source_dir=None, package_json=None):
+    paths = _local_package_paths(project_root, package_name)
+    package_dir = paths["package_dir"]
+    installed_json = paths["package_json"]
+    state = _read_local_package_state(project_root)
+    record = state["packages"].get(package_name)
+
+    if not package_dir.exists() and not package_dir.is_symlink():
+        directory_state = "missing"
+        link_target = None
+    elif _is_directory_link(package_dir):
+        directory_state = "junction" if os.name == "nt" else "symlink"
+        try:
+            link_target = package_dir.resolve()
+        except OSError:
+            link_target = None
+    elif package_dir.is_dir():
+        directory_state = "directory"
+        link_target = None
+    else:
+        directory_state = "file"
+        link_target = None
+
+    json_matches_source = None
+    if package_json and Path(package_json).is_file() and installed_json.is_file():
+        json_matches_source = _file_sha256(package_json) == _file_sha256(installed_json)
+
+    source_matches_link = None
+    if source_dir and link_target is not None:
+        try:
+            source_matches_link = link_target == Path(source_dir).resolve()
+        except OSError:
+            source_matches_link = False
+
+    return {
+        **paths,
+        "managed": record is not None,
+        "record": record,
+        "directory_state": directory_state,
+        "link_target": link_target,
+        "source_matches_link": source_matches_link,
+        "json_exists": installed_json.is_file(),
+        "json_matches_source": json_matches_source,
+    }
+
+
+def _copy_local_package_tree(source_dir, destination_dir):
+    shutil.copytree(
+        str(source_dir),
+        str(destination_dir),
+        ignore=shutil.ignore_patterns(
+            ".git",
+            ".venv",
+            "__pycache__",
+            "*.pyc",
+            "*.pyo",
+        ),
+    )
+
+
+def _replace_local_package_directory(source_dir, destination_dir, directory_mode):
+    destination_dir = Path(destination_dir)
+    staging_path = destination_dir.with_name(
+        ".{}.{}.installing".format(destination_dir.name, uuid.uuid4().hex)
+    )
+    backup_path = destination_dir.with_name(
+        ".{}.{}.backup".format(destination_dir.name, uuid.uuid4().hex)
+    )
+
+    try:
+        if directory_mode == "junction":
+            _create_directory_junction(source_dir, staging_path)
+        else:
+            _copy_local_package_tree(source_dir, staging_path)
+
+        destination_exists = destination_dir.exists() or destination_dir.is_symlink()
+        if destination_exists:
+            destination_dir.rename(backup_path)
+        try:
+            staging_path.rename(destination_dir)
+        except Exception:
+            if destination_exists and backup_path.exists():
+                backup_path.rename(destination_dir)
+            raise
+        if destination_exists:
+            _remove_local_package_path(backup_path)
+    finally:
+        if staging_path.exists() or staging_path.is_symlink():
+            _remove_local_package_path(staging_path)
+
+
+def install_local_houdini_package(
+    project_root,
+    source_dir,
+    package_json,
+    package_name=None,
+    directory_mode="junction",
+    replace=False,
+):
+    project_root = Path(project_root)
+    source_dir = Path(source_dir)
+    package_json = Path(package_json)
+    if not project_root.is_dir():
+        raise ValueError("Project root does not exist: {}".format(project_root))
+    if not source_dir.is_dir():
+        raise ValueError("Package source directory does not exist: {}".format(source_dir))
+    _validate_houdini_package_json(package_json)
+
+    if directory_mode not in LOCAL_PACKAGE_DIRECTORY_MODES:
+        raise ValueError("Unknown package directory mode: {}".format(directory_mode))
+    if package_name is None:
+        package_name = package_json.stem if package_json.name != "hpackage.json" else source_dir.name
+    package_name = _validate_local_package_name(package_name)
+    paths = _local_package_paths(project_root, package_name)
+    packages_dir = paths["packages_dir"]
+    destination_dir = paths["package_dir"]
+    destination_json = paths["package_json"]
+
+    if directory_mode in ("junction", "copy"):
+        if _absolute_path_without_links(source_dir) == _absolute_path_without_links(
+            destination_dir
+        ):
+            raise ValueError(
+                "The package source is already in the project packages directory; use None mode."
+            )
+        if _is_relative_to_without_links(destination_dir, source_dir):
+            raise ValueError("Package destination must not be inside the source directory.")
+        if _is_relative_to_without_links(package_json, destination_dir):
+            raise ValueError(
+                "Package JSON cannot be read from a destination directory that will be replaced."
+            )
+
+    packages_dir.mkdir(parents=True, exist_ok=True)
+    destination_exists = destination_dir.exists() or destination_dir.is_symlink()
+    json_exists = destination_json.exists()
+
+    same_junction = False
+    if directory_mode == "junction" and destination_exists and _is_directory_link(destination_dir):
+        try:
+            same_junction = destination_dir.resolve() == source_dir.resolve()
+        except OSError:
+            same_junction = False
+
+    if directory_mode == "none":
+        if not destination_dir.is_dir():
+            raise ValueError(
+                "None mode requires an existing package directory: {}".format(destination_dir)
+            )
+    elif destination_exists and not same_junction and not replace:
+        raise FileExistsError(
+            "Package destination already exists; enable Replace to update it: {}".format(
+                destination_dir
+            )
+        )
+
+    json_is_same = json_exists and destination_json.is_file() and (
+        _file_sha256(package_json) == _file_sha256(destination_json)
+    )
+    if json_exists and not json_is_same and not replace:
+        raise FileExistsError(
+            "Package JSON already exists; enable Replace to update it: {}".format(
+                destination_json
+            )
+        )
+
+    if directory_mode in ("junction", "copy") and not same_junction:
+        _replace_local_package_directory(source_dir, destination_dir, directory_mode)
+
+    if not json_is_same:
+        temporary_json = destination_json.with_name(
+            ".{}.{}.installing".format(destination_json.name, uuid.uuid4().hex)
+        )
+        try:
+            shutil.copy2(str(package_json), str(temporary_json))
+            os.replace(str(temporary_json), str(destination_json))
+        finally:
+            if temporary_json.exists():
+                temporary_json.unlink()
+
+    state = _read_local_package_state(project_root)
+    state["packages"][package_name] = {
+        "directory_mode": directory_mode,
+        "source_dir": str(source_dir.resolve()),
+        "source_json": str(package_json.resolve()),
+        "json_sha256": _file_sha256(destination_json),
+    }
+    _write_local_package_state(project_root, state)
+
+    return {
+        **paths,
+        "package_name": package_name,
+        "directory_mode": directory_mode,
+    }
+
+
+def remove_local_houdini_package(project_root, package_name, force=False):
+    package_name = _validate_local_package_name(package_name)
+    paths = _local_package_paths(project_root, package_name)
+    state = _read_local_package_state(project_root)
+    record = state["packages"].get(package_name)
+    if record is None:
+        raise ValueError(
+            "Package is not recorded as managed by hvenvloader: {}".format(package_name)
+        )
+
+    package_dir = paths["package_dir"]
+    package_json = paths["package_json"]
+    mode = record.get("directory_mode")
+    if package_json.is_file() and not force:
+        installed_hash = _file_sha256(package_json)
+        if installed_hash != record.get("json_sha256"):
+            raise RuntimeError(
+                "Installed package JSON was modified after installation; use force to remove it."
+            )
+
+    if mode == "junction" and (package_dir.exists() or package_dir.is_symlink()):
+        if not _is_directory_link(package_dir):
+            raise RuntimeError(
+                "Refusing to remove a junction that has been replaced by a real directory: {}".format(
+                    package_dir
+                )
+            )
+        try:
+            expected_source = Path(record["source_dir"]).resolve()
+            if package_dir.resolve() != expected_source:
+                raise RuntimeError(
+                    "Refusing to remove a junction whose target has changed: {}".format(
+                        package_dir
+                    )
+                )
+        except KeyError:
+            raise RuntimeError("Managed junction record has no source directory.")
+        _remove_directory_link(package_dir)
+    elif mode == "copy" and (package_dir.exists() or package_dir.is_symlink()):
+        if _is_directory_link(package_dir) or not package_dir.is_dir():
+            raise RuntimeError(
+                "Refusing to remove a copied package that is no longer a real directory: {}".format(
+                    package_dir
+                )
+            )
+        shutil.rmtree(str(package_dir))
+    elif mode not in LOCAL_PACKAGE_DIRECTORY_MODES:
+        raise RuntimeError("Unknown managed package directory mode: {}".format(mode))
+
+    if package_json.exists():
+        package_json.unlink()
+    del state["packages"][package_name]
+    _write_local_package_state(project_root, state)
+    return paths
+
+
+def manage_local_packages_tool():
+    QtCore, QtWidgets = _qt_modules()
+
+    class Dialog(QtWidgets.QDialog):
+        def __init__(self, parent=None):
+            super(Dialog, self).__init__(parent)
+            self.setWindowTitle("Manage Regular Packages")
+            self.setMinimumSize(760, 560)
+
+            layout = QtWidgets.QVBoxLayout(self)
+            form = QtWidgets.QFormLayout()
+            layout.addLayout(form)
+
+            self.root_edit = QtWidgets.QLineEdit(str(_default_project_root()))
+            root_browse = QtWidgets.QPushButton("...")
+            root_browse.clicked.connect(self._browse_root)
+            root_layout = QtWidgets.QHBoxLayout()
+            root_layout.addWidget(self.root_edit)
+            root_layout.addWidget(root_browse)
+            form.addRow("Project Root", root_layout)
+
+            self.managed_combo = QtWidgets.QComboBox()
+            form.addRow("Managed Package", self.managed_combo)
+
+            self.source_edit = QtWidgets.QLineEdit()
+            source_browse = QtWidgets.QPushButton("...")
+            source_browse.clicked.connect(self._browse_source)
+            source_layout = QtWidgets.QHBoxLayout()
+            source_layout.addWidget(self.source_edit)
+            source_layout.addWidget(source_browse)
+            form.addRow("Package Directory", source_layout)
+
+            self.json_edit = QtWidgets.QLineEdit()
+            json_browse = QtWidgets.QPushButton("...")
+            json_browse.clicked.connect(self._browse_json)
+            json_layout = QtWidgets.QHBoxLayout()
+            json_layout.addWidget(self.json_edit)
+            json_layout.addWidget(json_browse)
+            form.addRow("Package JSON", json_layout)
+
+            self.name_edit = QtWidgets.QLineEdit()
+            form.addRow("Package Name", self.name_edit)
+
+            self.mode_combo = QtWidgets.QComboBox()
+            self.mode_combo.addItem("Junction (development)", "junction")
+            self.mode_combo.addItem("Copy", "copy")
+            self.mode_combo.addItem("None (use existing directory)", "none")
+            form.addRow("Directory Mode", self.mode_combo)
+
+            self.replace_check = QtWidgets.QCheckBox(
+                "Replace an existing package directory or JSON when installing"
+            )
+            layout.addWidget(self.replace_check)
+
+            self.status_text = QtWidgets.QPlainTextEdit()
+            self.status_text.setReadOnly(True)
+            layout.addWidget(self.status_text, 1)
+
+            actions = QtWidgets.QDialogButtonBox()
+            self.install_button = actions.addButton(
+                "Install / Update", _dialog_button_role(QtWidgets, "ActionRole")
+            )
+            self.remove_button = actions.addButton(
+                "Remove Managed", _dialog_button_role(QtWidgets, "DestructiveRole")
+            )
+            refresh_button = actions.addButton(
+                "Refresh", _dialog_button_role(QtWidgets, "ActionRole")
+            )
+            close_button = actions.addButton(_dialog_button(QtWidgets, "Close"))
+            self.install_button.clicked.connect(self._install)
+            self.remove_button.clicked.connect(self._remove)
+            refresh_button.clicked.connect(self._refresh)
+            close_button.clicked.connect(self.reject)
+            layout.addWidget(actions)
+
+            self.root_edit.textChanged.connect(self._refresh)
+            self.root_edit.editingFinished.connect(self._reload_managed_packages)
+            self.managed_combo.currentIndexChanged.connect(self._managed_package_selected)
+            self.source_edit.textChanged.connect(self._source_changed)
+            self.json_edit.textChanged.connect(self._json_changed)
+            self.name_edit.textChanged.connect(self._refresh)
+            self.mode_combo.currentIndexChanged.connect(self._refresh)
+            self._reload_managed_packages()
+            self._refresh()
+
+        def _browse_root(self):
+            selected = QtWidgets.QFileDialog.getExistingDirectory(
+                self, "Select Project Root", self.root_edit.text()
+            )
+            if selected:
+                self.root_edit.setText(selected)
+                self._reload_managed_packages()
+
+        def _reload_managed_packages(self):
+            current_name = self.name_edit.text().strip()
+            self.managed_combo.blockSignals(True)
+            self.managed_combo.clear()
+            self.managed_combo.addItem("Select a managed package...", None)
+            try:
+                package_names = sorted(
+                    _read_local_package_state(self.root_edit.text())["packages"]
+                )
+            except Exception:
+                package_names = []
+            selected_index = 0
+            for package_name in package_names:
+                self.managed_combo.addItem(package_name, package_name)
+                if package_name == current_name:
+                    selected_index = self.managed_combo.count() - 1
+            self.managed_combo.setCurrentIndex(selected_index)
+            self.managed_combo.blockSignals(False)
+
+        def _managed_package_selected(self):
+            package_name = self.managed_combo.currentData()
+            if not package_name:
+                return
+            try:
+                record = _read_local_package_state(
+                    self.root_edit.text()
+                )["packages"][package_name]
+            except (KeyError, ValueError):
+                return
+            self.name_edit.setText(package_name)
+            self.source_edit.setText(record.get("source_dir", ""))
+            self.json_edit.setText(record.get("source_json", ""))
+            mode_index = self.mode_combo.findData(record.get("directory_mode"))
+            if mode_index >= 0:
+                self.mode_combo.setCurrentIndex(mode_index)
+            self._refresh()
+
+        def _browse_source(self):
+            selected = QtWidgets.QFileDialog.getExistingDirectory(
+                self, "Select Houdini Package Directory", self.source_edit.text()
+            )
+            if selected:
+                self.source_edit.setText(selected)
+
+        def _browse_json(self):
+            selected, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self,
+                "Select Houdini Package JSON",
+                self.json_edit.text() or self.source_edit.text(),
+                "JSON Files (*.json);;All Files (*)",
+            )
+            if selected:
+                self.json_edit.setText(selected)
+
+        def _source_changed(self):
+            candidates = detect_houdini_package_jsons(self.source_edit.text())
+            if candidates:
+                self.json_edit.setText(str(candidates[0]))
+            elif not self.source_edit.text():
+                self.json_edit.clear()
+            if self.source_edit.text() and not self.name_edit.text():
+                self.name_edit.setText(Path(self.source_edit.text()).name)
+            self._refresh()
+
+        def _json_changed(self):
+            json_path = Path(self.json_edit.text())
+            if json_path.name and json_path.name != "hpackage.json":
+                self.name_edit.setText(json_path.stem)
+            self._refresh()
+
+        def _refresh(self):
+            package_name = self.name_edit.text().strip()
+            if not package_name:
+                self.status_text.setPlainText(
+                    "Select a package directory. Valid package JSON files in its root are detected automatically."
+                )
+                self.remove_button.setEnabled(False)
+                return
+            try:
+                status = local_package_status(
+                    self.root_edit.text(),
+                    package_name,
+                    self.source_edit.text() or None,
+                    self.json_edit.text() or None,
+                )
+            except Exception as exc:
+                self.status_text.setPlainText(str(exc))
+                self.remove_button.setEnabled(False)
+                return
+
+            lines = [
+                "Package directory: {}".format(status["package_dir"]),
+                "Directory status: {}".format(status["directory_state"]),
+                "Package JSON: {}".format(status["package_json"]),
+                "JSON status: {}".format("present" if status["json_exists"] else "missing"),
+                "Managed by hvenvloader: {}".format("yes" if status["managed"] else "no"),
+            ]
+            if status["link_target"] is not None:
+                lines.append("Link target: {}".format(status["link_target"]))
+            if status["json_matches_source"] is not None:
+                lines.append(
+                    "JSON matches source: {}".format(
+                        "yes" if status["json_matches_source"] else "no"
+                    )
+                )
+            if self.mode_combo.currentData() == "none" and status["directory_state"] == "missing":
+                lines.append("WARNING: None mode requires the package directory to exist.")
+            self.status_text.setPlainText("\n".join(lines))
+            self.remove_button.setEnabled(status["managed"])
+
+        def _install(self):
+            try:
+                result = install_local_houdini_package(
+                    self.root_edit.text(),
+                    self.source_edit.text(),
+                    self.json_edit.text(),
+                    package_name=self.name_edit.text(),
+                    directory_mode=self.mode_combo.currentData(),
+                    replace=self.replace_check.isChecked(),
+                )
+            except Exception as exc:
+                QtWidgets.QMessageBox.critical(
+                    self, "Manage Regular Packages", str(exc)
+                )
+                return
+            QtWidgets.QMessageBox.information(
+                self,
+                "Manage Regular Packages",
+                "Installed {}.\n\nRestart Houdini to load the package.".format(
+                    result["package_name"]
+                ),
+            )
+            self._reload_managed_packages()
+            self._refresh()
+
+        def _remove(self):
+            package_name = self.name_edit.text().strip()
+            status = local_package_status(self.root_edit.text(), package_name)
+            mode = (status.get("record") or {}).get("directory_mode", "unknown")
+            message = "Remove the managed JSON"
+            if mode == "junction":
+                message += " and junction"
+            elif mode == "copy":
+                message += " and copied package directory"
+            message += " for {}?".format(package_name)
+            yes = _message_box_button(QtWidgets, "Yes")
+            no = _message_box_button(QtWidgets, "No")
+            answer = QtWidgets.QMessageBox.question(
+                self,
+                "Manage Regular Packages",
+                message,
+                yes | no,
+                no,
+            )
+            if answer != yes:
+                return
+            try:
+                remove_local_houdini_package(
+                    self.root_edit.text(), package_name, force=False
+                )
+            except RuntimeError as exc:
+                force_answer = QtWidgets.QMessageBox.question(
+                    self,
+                    "Manage Regular Packages",
+                    "{}\n\nForce removal?".format(exc),
+                    yes | no,
+                    no,
+                )
+                if force_answer != yes:
+                    return
+                try:
+                    remove_local_houdini_package(
+                        self.root_edit.text(), package_name, force=True
+                    )
+                except Exception as force_exc:
+                    QtWidgets.QMessageBox.critical(
+                        self, "Manage Regular Packages", str(force_exc)
+                    )
+                    return
+            except Exception as exc:
+                QtWidgets.QMessageBox.critical(
+                    self, "Manage Regular Packages", str(exc)
+                )
+                return
+            QtWidgets.QMessageBox.information(
+                self,
+                "Manage Regular Packages",
+                "Removed {}.\n\nRestart Houdini to unload the package completely.".format(
+                    package_name
+                ),
+            )
+            self._reload_managed_packages()
+            self._refresh()
 
     _exec_dialog(Dialog(_dialog_parent()))
 

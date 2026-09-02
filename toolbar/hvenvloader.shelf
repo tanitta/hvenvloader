@@ -9,6 +9,7 @@
     <memberTool name="init"/>
     <memberTool name="create_houdini_package"/>
     <memberTool name="export_nvhp"/>
+    <memberTool name="manage_packages"/>
     <memberTool name="uv"/>
   </toolshelf>
 
@@ -25,6 +26,11 @@ create_houdini_package_tool()]]></script>
   <tool name="export_nvhp" label="Export NVHP" icon="MISC_python">
     <script scriptType="python"><![CDATA[from hvenvloader.tools import export_nvhp_tool
 export_nvhp_tool()]]></script>
+  </tool>
+
+  <tool name="manage_packages" label="Manage Regular Packages" icon="MISC_python">
+    <script scriptType="python"><![CDATA[from hvenvloader.tools import manage_local_packages_tool
+manage_local_packages_tool()]]></script>
   </tool>
 
   <tool name="uv" label="uv" icon="MISC_python">

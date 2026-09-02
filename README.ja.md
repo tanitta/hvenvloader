@@ -34,11 +34,16 @@ hvenvloader は、Python プロジェクトのワークフローで Houdini を�
 
 生成された launcher は project の一部です。project の `.venv` と同じ場所に置いたまま、その project で作業するときに使用してください。
 
+## チュートリアル
+
+- [hvenvloader で NetworkX を Houdini から使う](Examples/networkx/README.md)
+
 ## Shelf Tools
 
 - `venv > Init Project` は `uv init --package --build-backend setuptools` で install 可能な setuptools package として project を初期化でき、`uv sync` を実行して project launcher を書き込みます。**Install this project into the venv** はデフォルトでオンです。オフにすると `uv init --no-package` を使用します。import package 名は project directory 名から `uv` が決定します。
 - `venv > Create NVHP` は、NVHP JSON と標準的な Houdini asset directory を含む Python package を作成する dialog を開きます。
 - `venv > Export NVHP` は、NVHP package directory を通常の Houdini Package layout に書き出す dialog を開きます。
+- `venv > Manage Regular Packages` は、NVHP ではない通常の Houdini Package を `<project-root>/packages` で管理します。package directory の junction（Windows 以外では symbolic link）作成、copy、または既存 directory の維持を選択でき、その隣に package JSON を配置します。
 - `venv > uv` は、`uv init`、`uv sync`、`uv add`、`uv remove`、`uv lock`、`uv tree`、launcher 生成を行うための簡単な UI を開きます。`uv init` には同じ project install option があり、local package の追加と `uv add --editable` にも対応しています。
 
 ## Launcher の挙動
@@ -50,7 +55,7 @@ project-root/
   .venv/
   .hvenvloader/
     editable_packages/
-  packages/                 # 任意、ユーザー管理の Houdini package JSON
+  packages/                 # 任意、通常の Houdini Package と JSON
   houdini.bat or houdini.sh
   your_project.hip
 ```
@@ -66,7 +71,19 @@ launcher から Houdini を起動すると、次の処理を行います。
 
 shelf tool を使わない場合は、適切な launcher (`houdini.bat` または `houdini.sh`) を project root に手動でコピーし、自分の環境に合わせて Houdini executable path と `HOUDINI_USER_PREF_DIR` の値を編集してください。
 
-launcher 実行時の project root は、常に launcher 自身が置かれている directory です。shelf tool は UI の project root 初期値としてのみ `$JOB` を使います。`.hvenvloader/` directory は hvenvloader が管理する生成物専用であり、その `editable_packages/` の内容は再生成または削除されることがあるため、通常は version control の対象外にしてください。任意の `<project-root>/packages/` directory はユーザー管理です。launcher はそこにある Houdini package JSON を読み込みますが、hvenvloader はその内容を生成・同期・cleanup しません。
+launcher 実行時の project root は、常に launcher 自身が置かれている directory です。shelf tool は UI の project root 初期値としてのみ `$JOB` を使います。`.hvenvloader/` directory は hvenvloader が管理する生成物専用であり、その `editable_packages/` の内容は再生成または削除されることがあるため、通常は version control の対象外にしてください。任意の `<project-root>/packages/` directory には通常の Houdini Package を配置します。従来どおり手動で管理することも、`venv > Manage Regular Packages` で導入・削除することもできます。
+
+### 通常の Houdini Package の管理
+
+`venv > Manage Regular Packages` は、選択した package JSON を内容未変更のまま `<project-root>/packages/<PackageName>.json` にコピーします。JSON と package directory を同じ場所に配置するため、`$HOUDINI_PACKAGE_PATH/<PackageName>` を使う package JSON を絶対 path なしで利用できます。
+
+package directory には次の3つの導入 mode があります。
+
+- **Junction** は、Windows では source directory を指す junction、その他の platform では symbolic link を `<project-root>/packages/<PackageName>` に作成します。local 開発ではこの mode を推奨します。
+- **Copy** は、`.git`、`.venv`、Python bytecode、`__pycache__` を除外して source directory をコピーします。更新時は以前のコピーを置換するため、source 側で削除された file が導入先に残りません。
+- **None** は、既存の `<project-root>/packages/<PackageName>` を変更しません。この directory が既に存在する場合に、JSON だけを導入します。
+
+dialog は出力先の状態を表示し、source directory 直下の package JSON を自動検出します。導入情報は `<project-root>/.hvenvloader/local_packages.json` に記録され、**Remove Managed** は記録された JSON と directory だけを削除します。None mode の directory は削除しません。導入、更新、削除後は Houdini を再起動してください。
 
 hvenvloader の更新後、既存 project では launcher を再生成してください。古い launcher を使い続ける場合、`.venv` 内の旧 editable overlay path を使う可能性があります。
 

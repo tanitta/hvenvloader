@@ -34,11 +34,16 @@ The `hvenvloader.json` file registers this package with Houdini. See also [Houdi
 
 The generated launcher is part of the project. Keep it next to the project's `.venv` and use it whenever you work on that project.
 
+## Tutorials
+
+- [Use NetworkX from Houdini with hvenvloader (Japanese)](Examples/networkx/README.md)
+
 ## Shelf Tools
 
 - `venv > Init Project` can initialize the project as an installable setuptools package with `uv init --package --build-backend setuptools`, runs `uv sync`, and writes the project launcher. The **Install this project into the venv** option is enabled by default; disable it to use `uv init --no-package`. The import package name is derived from the project directory name by `uv`.
 - `venv > Create NVHP` opens a dialog for creating a Python package that contains an NVHP JSON and standard Houdini asset directories.
 - `venv > Export NVHP` opens a dialog for exporting an NVHP package directory to a vanilla Houdini Package layout.
+- `venv > Manage Regular Packages` manages non-NVHP Houdini Packages in `<project-root>/packages`. It can create a directory junction (a symbolic link on non-Windows systems), copy the package directory, or keep an existing directory unchanged, and places the package JSON next to it.
 - `venv > uv` opens a small UI for `uv init`, `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv tree`, and launcher generation. Its `uv init` action has the same project-install option. It also supports adding local packages and `uv add --editable`.
 
 ## Launcher Behavior
@@ -50,7 +55,7 @@ project-root/
   .venv/
   .hvenvloader/
     editable_packages/
-  packages/                 # optional, user-managed Houdini package JSONs
+  packages/                 # optional regular Houdini Packages and JSONs
   houdini.bat or houdini.sh
   your_project.hip
 ```
@@ -66,7 +71,19 @@ When the launcher starts Houdini, it:
 
 If you do not use the shelf tool, copy the appropriate launcher (`houdini.bat` or `houdini.sh`) into your project root manually and edit the Houdini executable path and `HOUDINI_USER_PREF_DIR` values for your environment.
 
-The project root used at launch time is always the directory containing the launcher. The shelf tools use `$JOB` only as the initial project-root value in their UI. The `.hvenvloader/` directory is reserved for generated state managed by hvenvloader; its `editable_packages/` contents may be rebuilt or removed and should normally be excluded from version control. The optional `<project-root>/packages/` directory is user-managed: the launcher reads Houdini package JSONs from it but hvenvloader never creates, synchronizes, or cleans its contents.
+The project root used at launch time is always the directory containing the launcher. The shelf tools use `$JOB` only as the initial project-root value in their UI. The `.hvenvloader/` directory is reserved for generated state managed by hvenvloader; its `editable_packages/` contents may be rebuilt or removed and should normally be excluded from version control. The optional `<project-root>/packages/` directory contains regular Houdini Packages. Its contents can still be managed manually, or packages can be installed and removed with `venv > Manage Regular Packages`.
+
+### Managing regular Houdini Packages
+
+`venv > Manage Regular Packages` copies a selected package JSON unchanged to `<project-root>/packages/<PackageName>.json`. Keeping the JSON and package directory together allows package JSONs that use `$HOUDINI_PACKAGE_PATH/<PackageName>` to work without absolute paths.
+
+The package directory has three installation modes:
+
+- **Junction** creates `<project-root>/packages/<PackageName>` as a junction to the source directory on Windows, or as a symbolic link on other platforms. This is the recommended mode for local development.
+- **Copy** copies the source directory while excluding `.git`, `.venv`, Python bytecode, and `__pycache__`. Updating replaces the previous copy so removed source files do not remain installed.
+- **None** requires `<project-root>/packages/<PackageName>` to exist already and leaves it unchanged. Only the JSON is installed.
+
+The dialog previews the destination state and detects package JSON files in the source directory. Installations are recorded in `<project-root>/.hvenvloader/local_packages.json`; **Remove Managed** only removes recorded JSONs and directories. None-mode directories are never removed. Restart Houdini after installing, updating, or removing a package.
 
 After upgrading hvenvloader, regenerate the launcher in each existing project. An old launcher may continue to use the legacy editable overlay path inside `.venv`.
 

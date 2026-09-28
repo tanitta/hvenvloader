@@ -69,6 +69,8 @@ When the launcher starts Houdini, it:
 5. Sets `HVENVLOADER_LAUNCHER=1` so the non-launcher fallback does not run.
 6. Starts Houdini with the project virtual environment available.
 
+Arguments passed to the launcher are forwarded to Houdini in the same order. For example, `houdini.bat "scene with spaces.hip"` or `./houdini.sh "scene with spaces.hip"`. Regenerate an existing project launcher with `venv > uv > Write Houdini launcher` to get this behavior.
+
 If you do not use the shelf tool, copy the appropriate launcher (`houdini.bat` or `houdini.sh`) into your project root manually and edit the Houdini executable path and `HOUDINI_USER_PREF_DIR` values for your environment.
 
 The project root used at launch time is always the directory containing the launcher. The shelf tools use `$JOB` only as the initial project-root value in their UI. The `.hvenvloader/` directory is reserved for generated state managed by hvenvloader; its `editable_packages/` contents may be rebuilt or removed and should normally be excluded from version control. The optional `<project-root>/packages/` directory contains regular Houdini Packages. Its contents can still be managed manually, or packages can be installed and removed with `venv > Manage Regular Packages`.

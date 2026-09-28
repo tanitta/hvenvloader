@@ -69,6 +69,8 @@ launcher から Houdini を起動すると、次の処理を行います。
 5. `HVENVLOADER_LAUNCHER=1` を設定し、launcher を使わない場合の fallback が実行されないようにします。
 6. project の virtual environment を利用できる状態で Houdini を起動します。
 
+launcher に渡した引数は順序を保って Houdini に渡します。例: `houdini.bat "scene with spaces.hip"` または `./houdini.sh "scene with spaces.hip"`。既存 project では `venv > uv > Write Houdini launcher` で launcher を更新してください。
+
 shelf tool を使わない場合は、適切な launcher (`houdini.bat` または `houdini.sh`) を project root に手動でコピーし、自分の環境に合わせて Houdini executable path と `HOUDINI_USER_PREF_DIR` の値を編集してください。
 
 launcher 実行時の project root は、常に launcher 自身が置かれている directory です。shelf tool は UI の project root 初期値としてのみ `$JOB` を使います。`.hvenvloader/` directory は hvenvloader が管理する生成物専用であり、その `editable_packages/` の内容は再生成または削除されることがあるため、通常は version control の対象外にしてください。任意の `<project-root>/packages/` directory には通常の Houdini Package を配置します。従来どおり手動で管理することも、`venv > Manage Regular Packages` で導入・削除することもできます。

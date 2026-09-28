@@ -57,4 +57,5 @@ if defined PYTHONPATH (
 ) else (
     set "PYTHONPATH=!HVENVLOADER_PYTHONPATH!"
 )
-"%HOUDINI_EXE%"
+setlocal DisableDelayedExpansion
+"%HOUDINI_EXE%" %*

@@ -947,7 +947,11 @@ def create_houdini_package_tool():
             layout.addLayout(form)
 
             self.save_dir_edit = QtWidgets.QLineEdit(str(_default_project_root()))
+            self.save_dir_edit.setToolTip(
+                "Parent directory where the new NVHP project folder will be created."
+            )
             browse_button = QtWidgets.QPushButton("...")
+            browse_button.setToolTip("Select the parent directory for the new project.")
             browse_button.clicked.connect(self._browse_save_dir)
             save_dir_layout = QtWidgets.QHBoxLayout()
             save_dir_layout.addWidget(self.save_dir_edit)
@@ -956,14 +960,39 @@ def create_houdini_package_tool():
 
             self.generated_folder_edit = QtWidgets.QLineEdit()
             self.generated_folder_edit.setReadOnly(True)
+            self.generated_folder_edit.setToolTip(
+                "Preview of the project folder created from Save Directory and Project Name."
+            )
             form.addRow("Generated Folder", self.generated_folder_edit)
 
             self.project_name_edit = QtWidgets.QLineEdit("MyHoudiniPackage")
+            self.project_name_edit.setToolTip(
+                "Name of the project folder and the Python distribution in pyproject.toml. "
+                "This name may contain letters, numbers, '.', '_', and '-'."
+            )
             self.package_name_edit = QtWidgets.QLineEdit("MyHoudiniPackage")
+            self.package_name_edit.setToolTip(
+                "Python import name used for src/<name>/ and statements such as "
+                "'import MyHoudiniPackage'."
+            )
             self.env_var_edit = QtWidgets.QLineEdit("MYHOUDINIPACKAGE")
+            self.env_var_edit.setToolTip(
+                "Houdini environment variable defined by hpackage.json for the installed "
+                "package root."
+            )
             self.version_edit = QtWidgets.QLineEdit("0.1.0")
+            self.version_edit.setToolTip(
+                "Initial Python distribution version written to pyproject.toml."
+            )
             self.description_edit = QtWidgets.QLineEdit("My native venvloader Houdini package.")
+            self.description_edit.setToolTip(
+                "Short Python distribution description written to pyproject.toml."
+            )
             self.requires_python_edit = QtWidgets.QLineEdit(">={}".format(python_version_tag()))
+            self.requires_python_edit.setToolTip(
+                "Python version requirement written to pyproject.toml, for example '>=3.11'. "
+                "It should be compatible with Houdini's Python version."
+            )
 
             self.save_dir_edit.textChanged.connect(self._update_generated_folder)
             self.project_name_edit.textChanged.connect(self._sync_generated_names)
@@ -971,25 +1000,40 @@ def create_houdini_package_tool():
             self.env_var_edit.textEdited.connect(self._env_var_edited)
 
             form.addRow("Project Name", self.project_name_edit)
-            form.addRow("Import Package", self.package_name_edit)
+            form.addRow("Python Import Name", self.package_name_edit)
             form.addRow("Houdini Env Var", self.env_var_edit)
             form.addRow("Version", self.version_edit)
             form.addRow("Description", self.description_edit)
             form.addRow("Requires Python", self.requires_python_edit)
 
             group = QtWidgets.QGroupBox("Houdini Directories")
+            group.setToolTip(
+                "Select the standard Houdini asset directories to create inside the Python "
+                "import package."
+            )
             group_layout = QtWidgets.QGridLayout(group)
             self.subdir_checks = []
             for index, subdir in enumerate(DEFAULT_HOUDINI_SUBDIRS):
                 checkbox = QtWidgets.QCheckBox(subdir)
+                checkbox.setToolTip(
+                    "Create src/<Python Import Name>/{} and include its contents in the "
+                    "Python distribution.".format(subdir)
+                )
                 checkbox.setChecked(subdir in ("otls", "scripts", "toolbar", "python_panels"))
                 self.subdir_checks.append(checkbox)
                 group_layout.addWidget(checkbox, index // 2, index % 2)
             layout.addWidget(group)
 
             self.include_readme_check = QtWidgets.QCheckBox("Create README.md")
+            self.include_readme_check.setToolTip(
+                "Create a README.md describing the generated NVHP layout."
+            )
             self.include_readme_check.setChecked(True)
             self.overwrite_check = QtWidgets.QCheckBox("Overwrite existing files")
+            self.overwrite_check.setToolTip(
+                "Allow generated files to replace files with the same names in an existing "
+                "project folder."
+            )
             layout.addWidget(self.include_readme_check)
             layout.addWidget(self.overwrite_check)
 

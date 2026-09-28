@@ -107,7 +107,7 @@ When Houdini starts through the normal shortcut, Python packages installed in `$
 
 hvenvloader loads NVHP `.json` files that are distributed inside Python packages installed in the project `.venv`. See [HoudiniUnityAnimationClip](https://github.com/tanitta/HoudiniUnityAnimationClip) for a practical example of a Houdini asset package distributed as a Python package.
 
-The easiest way to start is to run `venv > Create NVHP` in Houdini. The shelf tool opens a dialog where you can choose the save directory, project name, import package name, Houdini environment variable name, Python requirement, and standard Houdini directories to include. It then creates the Python package layout, `pyproject.toml`, and `hpackage.json` for you.
+The easiest way to start is to run `venv > Create NVHP` in Houdini. The shelf tool opens a dialog where you can choose the save directory, project name, Python import name, Houdini environment variable name, Python requirement, and standard Houdini directories to include. It then creates the Python package layout, `pyproject.toml`, and `hpackage.json` for you.
 
 An NVHP is intentionally hvenvloader-native. It is not a standalone vanilla Houdini Package source layout. The Python import package root is the Houdini package root, so `__init__.py` and `hpackage.json` live next to each other under `src/<package>/`. Python code should be imported as a normal Python package instead of being placed under Houdini's `scripts/python` package path convention.
 

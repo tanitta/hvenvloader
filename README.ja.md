@@ -107,7 +107,7 @@ hvenvloader の更新後、既存 project では launcher を再生成してく�
 
 hvenvloader は、project の `.venv` にインストールされた Python package 内に配布されている NVHP `.json` file を読み込めます。実用例として [HoudiniUnityAnimationClip](https://github.com/tanitta/HoudiniUnityAnimationClip) を参照してください。
 
-最も簡単な始め方は、Houdini で `venv > Create NVHP` を実行することです。この shelf tool は dialog を開き、保存場所、project name、import package name、Houdini environment variable name、Python requirement、作成する標準 Houdini directory を指定できます。実行すると、Python package layout、`pyproject.toml`、`hpackage.json` が作成されます。
+最も簡単な始め方は、Houdini で `venv > Create NVHP` を実行することです。この shelf tool は dialog を開き、保存場所、project name、Python import name、Houdini environment variable name、Python requirement、作成する標準 Houdini directory を指定できます。実行すると、Python package layout、`pyproject.toml`、`hpackage.json` が作成されます。
 
 NVHP は意図的に hvenvloader 専用の format です。単体で通常の Houdini Package として導入できる source layout ではありません。Python import package root を Houdini package root として扱うため、`__init__.py` と `hpackage.json` は `src/<package>/` の直下に並びます。Python code は Houdini の `scripts/python` convention ではなく、通常の Python package として import します。
 

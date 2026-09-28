@@ -1,0 +1,39 @@
+{
+  "name": "hvenvloader",
+  "version": "0.1.0",
+  "description": "Develop, validate, export, and troubleshoot hvenvloader-based Houdini projects and Native venvloader Houdini Packages.",
+  "author": {
+    "name": "tanitta",
+    "url": "https://github.com/tanitta"
+  },
+  "homepage": "https://github.com/tanitta/hvenvloader#readme",
+  "repository": "https://github.com/tanitta/hvenvloader",
+  "license": "Apache-2.0",
+  "keywords": [
+    "houdini",
+    "python",
+    "uv",
+    "virtual-environment",
+    "nvhp"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Houdini venv Loader",
+    "shortDescription": "Build and troubleshoot hvenvloader projects.",
+    "longDescription": "Set up, validate, export, and troubleshoot Houdini projects and Native venvloader Houdini Packages that use project-local uv environments.",
+    "developerName": "tanitta",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Project setup",
+      "NVHP authoring",
+      "Package validation",
+      "Troubleshooting"
+    ],
+    "websiteURL": "https://github.com/tanitta/hvenvloader",
+    "defaultPrompt": [
+      "Set up this Houdini project to use hvenvloader.",
+      "Validate this Native venvloader Houdini Package.",
+      "Diagnose why this NVHP is not loading in Houdini."
+    ]
+  }
+}

@@ -48,6 +48,24 @@ The generated launcher is part of the project. Keep it next to the project's `.v
 
 ## Launcher Behavior
 
+### Save and Restart (Windows)
+
+`venv > Save and Restart` saves the current HIP, closes this Houdini instance,
+and opens the saved HIP through the project's `houdini.bat`. New scenes prompt
+for a save location; cancelling or a save failure leaves Houdini open.
+
+For existing projects, first use `venv > uv > Write Houdini launcher` to update
+the launcher. The tool uses the recorded launcher path, or `$JOB/houdini.bat`
+when Houdini was opened normally. A working project `.venv` is required.
+The helper waits for this specific Houdini process, with a two-minute timeout.
+Other Houdini instances are unaffected. Memory-only simulation caches are not restored.
+
+The Windows launcher records its original `PATH` and `PYTHONPATH` for restarts.
+The restart tool clears inherited Houdini/Python configuration before rerunning
+the launcher and preserves `$JOB`. Custom settings required at startup should
+be provided by the launcher or package configuration. Custom package environment
+variables outside the Houdini/Python namespaces remain inherited.
+
 `houdini.bat` and `houdini.sh` are launchers for a project root. They expect this layout:
 
 ```text

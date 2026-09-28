@@ -1,5 +1,18 @@
 # Houdini venv Loader (hvenvloader)
 
+## 保存して再起動（Windows）
+
+`venv > Save and Restart` で現在のHIPを保存し、このHoudiniの終了後にプロジェクトの
+`houdini.bat`から同じHIPを開きます。新規シーンは保存先を選択します。
+キャンセル・保存失敗の場合は終了しません。メモリ上だけのキャッシュは復元されません。
+
+既存プロジェクトでは、先に `venv > uv > Write Houdini launcher` でランチャーを更新してください。
+起動時に記録したランチャーの場所を使い、記録がなければ `$JOB/houdini.bat` を使います。
+プロジェクトの `.venv` が必要です。終了待ちは最大2分で、他のHoudiniには影響しません。
+ランチャー起動前の `PATH` と `PYTHONPATH` を記録して再利用し、Houdini/Pythonの環境設定を
+初期化してから起動し直します。`$JOB` は保持します。独自のパッケージ環境変数は引き継がれるため、
+必要な起動設定はランチャーやパッケージ設定で管理してください。
+
 [English](README.md) | [日本語](README.ja.md)
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/tanitta/hvenvloader/blob/main/LICENSE)

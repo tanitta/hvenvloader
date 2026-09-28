@@ -11,6 +11,9 @@ REM ==============================================
 set "HOUDINI_EXE=@HOUDINI_EXE@"
 set "HOUDINI_USER_PREF_DIR=@HOUDINI_USER_PREF_DIR@"
 set "HVENVLOADER_LAUNCHER=1"
+set "HVENVLOADER_LAUNCHER_PATH=%~f0"
+set "HVENVLOADER_BASE_PYTHONPATH=%PYTHONPATH%"
+set "HVENVLOADER_BASE_PATH=%PATH%"
 set "HVENVLOADER=@HVENVLOADER@"
 set "SCRIPT_DIR=%~dp0"
 set "PYTHON_SITE_PACKAGES=%SCRIPT_DIR%\.venv\Lib\site-packages"
@@ -58,4 +61,8 @@ if defined PYTHONPATH (
     set "PYTHONPATH=!HVENVLOADER_PYTHONPATH!"
 )
 setlocal DisableDelayedExpansion
-"%HOUDINI_EXE%" %*
+if defined HVENVLOADER_RESTART_HIP (
+    "%HOUDINI_EXE%" %* "%HVENVLOADER_RESTART_HIP%"
+) else (
+    "%HOUDINI_EXE%" %*
+)

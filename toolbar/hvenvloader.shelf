@@ -11,6 +11,7 @@
     <memberTool name="export_nvhp"/>
     <memberTool name="manage_packages"/>
     <memberTool name="uv"/>
+    <memberTool name="hvenvloader_restart"/>
   </toolshelf>
 
   <tool name="init" label="Init Project" icon="MISC_python">
@@ -36,5 +37,9 @@ manage_local_packages_tool()]]></script>
   <tool name="uv" label="uv" icon="MISC_python">
     <script scriptType="python"><![CDATA[from hvenvloader.tools import uv_tool
 uv_tool()]]></script>
+  </tool>
+  <tool name="hvenvloader_restart" label="Save and Restart" icon="MISC_python">
+    <script scriptType="python"><![CDATA[from hvenvloader.restart import restart_tool
+restart_tool()]]></script>
   </tool>
 </shelfDocument>

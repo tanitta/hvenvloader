@@ -66,6 +66,18 @@ Distinguish launcher mode from fallback mode first. Then inspect the matching pl
 
 Prefer evidence from files and captured process output. Do not claim that Houdini loaded an NVHP successfully unless the live process or its output was actually checked.
 
+### Use the command line interface
+
+The package ships a Houdini-free CLI: `python -m hvenvloader` (module under `scripts/python`). Commands:
+
+- `init [path]`: `uv init --package --build-backend setuptools` + `uv sync` + launcher write. Flags: `--init`, `--sync`, `--launcher` (each on by default for a new project), `--no-init`, `--no-sync`, `--no-launcher` (opt out), `--no-package`, `--python`, `--force`, `--hvenvloader`. Pass a single one (for example `--launcher`) to update only that part of an existing project. The launcher `@HOUDINI_EXE@` token is filled from `$HVENVLOADER_HOUDINI_EXE`, falling back to the current interpreter.
+- `nvhp create <name> [path]`: creates an NVHP project folder (same layout as the Create NVHP shelf tool). Flags: `--package-name`, `--env-var`, `--version`, `--description`, `--requires-python`, `--subdirs`, `--no-readme`, `--force`, `--sync`.
+- `nvhp export <package_dir> <export_dir>`: exports an NVHP to a vanilla Houdini Package layout. Flag: `--force`.
+- `launcher write [path]`: writes `houdini.bat` / `houdini.sh` from the bundled template (always overwrites). Flag: `--hvenvloader`.
+- `uv [path] <uv args...>`: runs `uv` in the project directory and streams output.
+
+Prefer the CLI over the shelf tools when Houdini is not running (CI, script-based setup). It shares the same implementation functions as the shelf tools; do not duplicate that logic.
+
 ## Execution boundaries
 
 Do not launch Houdini, modify global Houdini package configuration, install dependencies, rebuild `.venv`, or overwrite exports for a read-only explanation, review, or diagnosis. Perform those mutations only when they are part of the user's requested outcome. Preserve unrelated worktree changes and use the project's existing hvenvloader implementation instead of copying its logic into ad hoc scripts.

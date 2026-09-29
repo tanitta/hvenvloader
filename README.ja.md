@@ -59,6 +59,21 @@ hvenvloader は、Python プロジェクトのワークフローで Houdini を�
 - `venv > Manage Regular Packages` は、NVHP ではない通常の Houdini Package を `<project-root>/packages` で管理します。package directory の junction（Windows 以外では symbolic link）作成、copy、または既存 directory の維持を選択でき、その隣に package JSON を配置します。
 - `venv > uv` は、`uv init`、`uv sync`、`uv add`、`uv remove`、`uv lock`、`uv tree`、launcher 生成を行うための簡単な UI を開きます。`uv init` には同じ project install option があり、local package の追加と `uv add --editable` にも対応しています。
 
+## コマンドラインインターフェース
+
+Houdini を起動せずにコマンドラインからも操作できます:
+
+```bash
+python -m hvenvloader init /path/to/project             # uv init --package --build-backend setuptools + uv sync + ランチャー生成
+python -m hvenvloader init --launcher /path/to/project  # ランチャーの書き出しのみ（uv init/sync は行わない）
+python -m hvenvloader nvhp create MyPkg /parent/dir   # NVHP プロジェクトフォルダを作成
+python -m hvenvloader nvhp export /parent/dir/MyPkg/src/MyPkg /export/dir
+python -m hvenvloader launcher write /path/to/project
+python -m hvenvloader uv /path/to/project add numpy  # プロジェクトディレクトリで uv を実行
+```
+
+`python -m hvenvloader` はパッケージが `PYTHONPATH` に入る必要があります（例: `PYTHONPATH=$HOUDINI_PACKAGE_PATH/hvenvloader/scripts/python`）、またはパッケージがインストール済みの Houdini セッションから実行します。`init` と `launcher write` は `$HVENVLOADER_HOUDINI_EXE` 環境変数が設定されている場合はその値で `@HOUDINI_EXE@` を置き換え、設定されていない場合は現在のインタープリタを使用します。全オプションは `python -m hvenvloader <command> --help` を参照してください。
+
 ## Launcher の挙動
 
 `houdini.bat` と `houdini.sh` は project root 用の launcher です。次のような directory layout を想定しています。

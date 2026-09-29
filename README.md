@@ -46,6 +46,21 @@ The generated launcher is part of the project. Keep it next to the project's `.v
 - `venv > Manage Regular Packages` manages non-NVHP Houdini Packages in `<project-root>/packages`. It can create a directory junction (a symbolic link on non-Windows systems), copy the package directory, or keep an existing directory unchanged, and places the package JSON next to it.
 - `venv > uv` opens a small UI for `uv init`, `uv sync`, `uv add`, `uv remove`, `uv lock`, `uv tree`, and launcher generation. Its `uv init` action has the same project-install option. It also supports adding local packages and `uv add --editable`.
 
+## Command Line Interface
+
+hvenvloader can also be driven from a terminal without starting Houdini:
+
+```bash
+python -m hvenvloader init /path/to/project             # uv init --package --build-backend setuptools + uv sync + launcher
+python -m hvenvloader init --launcher /path/to/project  # only re-write the launcher (no uv init/sync)
+python -m hvenvloader nvhp create MyPkg /parent/dir   # create an NVHP project folder
+python -m hvenvloader nvhp export /parent/dir/MyPkg/src/MyPkg /export/dir
+python -m hvenvloader launcher write /path/to/project
+python -m hvenvloader uv /path/to/project add numpy  # run uv in a project directory
+```
+
+`python -m hvenvloader` must be run with the package on `PYTHONPATH` (for example `PYTHONPATH=$HOUDINI_PACKAGE_PATH/hvenvloader/scripts/python`), or from inside a Houdini session that has the package installed. `init` and `launcher write` replace the `@HOUDINI_EXE@` token with the `$HVENVLOADER_HOUDINI_EXE` environment variable when it is set, and with the current interpreter otherwise. Run `python -m hvenvloader <command> --help` for the full options list.
+
 ## Launcher Behavior
 
 ### Save and Restart (Windows)

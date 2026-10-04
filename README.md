@@ -81,6 +81,18 @@ the launcher and preserves `$JOB`. Custom settings required at startup should
 be provided by the launcher or package configuration. Custom package environment
 variables outside the Houdini/Python namespaces remain inherited.
 
+To customize the Windows launcher template, copy `houdini.bat` to
+`houdini.user.bat` **in the hvenvloader installation directory** and edit the copy.
+Both shelf and CLI generation prefer this user template when present and fall
+back to the standard `houdini.bat` otherwise. The project output is still named
+`houdini.bat`, with the usual `@HOUDINI_EXE@`, `@HOUDINI_USER_PREF_DIR@`, and
+`@HVENVLOADER@` token replacements. Regenerate existing project launchers with
+`venv > uv > Write Houdini launcher` or
+`python -m hvenvloader launcher write <project>` to apply template changes.
+On Linux/macOS, put `houdini.user.sh` in the same directory to override the
+standard `houdini.sh` template. The project output remains `houdini.sh`.
+Both user templates are ignored by Git.
+
 `houdini.bat` and `houdini.sh` are launchers for a project root. They expect this layout:
 
 ```text

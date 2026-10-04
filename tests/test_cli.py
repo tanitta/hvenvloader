@@ -3,12 +3,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "python"))
 
 from hvenvloader.cli import _cmd_nvhp_create, build_parser, generate_launcher_cli, main
+from hvenvloader import tools
 
 
 class CliParserTests(unittest.TestCase):
@@ -61,6 +63,46 @@ class CliParserTests(unittest.TestCase):
 
 
 class CliCommandTests(unittest.TestCase):
+    def test_windows_user_template_and_fallback_for_shelf_and_cli(self):
+        self._check_user_template('Windows', 'houdini.bat', 'houdini.user.bat')
+
+    def test_unix_user_template_and_fallback_for_shelf_and_cli(self):
+        self._check_user_template('Linux', 'houdini.sh', 'houdini.user.sh')
+
+    def _check_user_template(self, system, name, custom_name):
+        with tempfile.TemporaryDirectory(prefix="hvenv templates ") as directory:
+            root = Path(directory)
+            templates = root / 'templates'
+            project = root / 'project'
+            templates.mkdir()
+            project.mkdir()
+            standard = templates / name
+            custom = templates / custom_name
+            tokens = '@HOUDINI_EXE@\n@HOUDINI_USER_PREF_DIR@\n@HVENVLOADER@\n'
+            standard.write_text('standard\n' + tokens, encoding='utf-8')
+            hou = Mock()
+            hou.getenv.return_value = 'C:/fake/pref'
+            with patch.object(tools.platform, 'system', return_value=system), \
+                 patch.object(tools, '_hvenvloader_root', return_value=templates), \
+                 patch.object(tools, '_hou', return_value=hou), \
+                 patch.dict(os.environ, HOUDINI_USER_PREF_DIR='C:/fake/pref'):
+                for use_custom in (False, True, False):
+                    if use_custom:
+                        custom.write_text('custom\n' + tokens, encoding='utf-8')
+                    elif custom.exists():
+                        custom.unlink()
+                    for generate in (lambda: tools.generate_launcher(project),
+                                     lambda: generate_launcher_cli(project, templates)):
+                        written = generate()
+                        self.assertEqual(written, project / name)
+                        text = written.read_text(encoding='utf-8')
+                        self.assertTrue(text.startswith('custom\n' if use_custom else 'standard\n'))
+                        self.assertNotIn('@HOUDINI_EXE@', text)
+                        self.assertIn('C:/fake/pref', text)
+                        self.assertIn(str(templates), text)
+                        if use_custom:
+                            self.assertEqual(custom.read_text(encoding='utf-8'), 'custom\n' + tokens)
+
     def _args(self, *argv):
         return build_parser().parse_args(list(argv))
 

@@ -44,14 +44,14 @@ def generate_launcher_cli(root_path, hvenvloader_root=None):
     import stat as stat_module
     from pathlib import Path
 
-    from .tools import launcher_name
+    from .tools import launcher_name, launcher_template_path
 
     root_path = Path(root_path)
     launcher_file_name = launcher_name()
     if hvenvloader_root is None:
         hvenvloader_root = _resolve_hvenvloader_root(None)
 
-    template_path = hvenvloader_root / launcher_file_name
+    template_path = launcher_template_path(hvenvloader_root, launcher_file_name)
     text = template_path.read_text(encoding="utf-8")
     houdini_exe = os.environ.get("HVENVLOADER_HOUDINI_EXE") or sys.executable
     text = text.replace("@HOUDINI_EXE@", houdini_exe)

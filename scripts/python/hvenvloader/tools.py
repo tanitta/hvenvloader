@@ -155,12 +155,21 @@ def launcher_path(root_path):
     return Path(root_path) / launcher_name()
 
 
+def launcher_template_path(hvenvloader_root, name):
+    root = Path(hvenvloader_root)
+    if name in ("houdini.bat", "houdini.sh"):
+        custom = root / ("houdini.user" + Path(name).suffix)
+        if custom.is_file():
+            return custom
+    return root / name
+
+
 def generate_launcher(root_path):
     root_path = Path(root_path)
     current_launcher_name = launcher_name()
 
     hvenvloader_root = _hvenvloader_root()
-    template_path = hvenvloader_root / current_launcher_name
+    template_path = launcher_template_path(hvenvloader_root, current_launcher_name)
     text = template_path.read_text(encoding="utf-8")
     text = text.replace("@HOUDINI_EXE@", sys.executable)
     text = text.replace("@HOUDINI_USER_PREF_DIR@", _hou().getenv("HOUDINI_USER_PREF_DIR") or "")

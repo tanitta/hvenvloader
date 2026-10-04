@@ -34,6 +34,8 @@ If this skill was installed without the surrounding plugin repository, locate th
 
 Confirm the intended project root and Houdini Python version. Prefer the existing hvenvloader shelf workflow when the task is interactive. For requested automation, reuse the bundled launcher templates and implementation conventions; do not invent a second launcher format.
 
+For custom launcher generation, copy the platform template to `houdini.user.bat` or `houdini.user.sh` in the hvenvloader installation root, not the consuming project root. Shelf and CLI generation prefer that user template when present and fall back to `houdini.bat` or `houdini.sh`. CLI `--hvenvloader` selects the template root. Output in the project remains `houdini.bat` or `houdini.sh`, with the usual `@HOUDINI_EXE@`, `@HOUDINI_USER_PREF_DIR@`, and `@HVENVLOADER@` replacements. Regenerate existing project launchers to apply changes; preserve user templates and keep them out of commits.
+
 After setup, verify that `.venv`, `pyproject.toml`, `uv.lock` when applicable, and the platform launcher agree on the same project root. Use `uv sync` only when dependency installation or repair is part of the request.
 
 ### Create or modify an NVHP
@@ -73,7 +75,7 @@ The package ships a Houdini-free CLI: `python -m hvenvloader` (module under `scr
 - `init [path]`: `uv init --package --build-backend setuptools` + `uv sync` + launcher write. Flags: `--init`, `--sync`, `--launcher` (each on by default for a new project), `--no-init`, `--no-sync`, `--no-launcher` (opt out), `--no-package`, `--python`, `--force`, `--hvenvloader`. Pass a single one (for example `--launcher`) to update only that part of an existing project. The launcher `@HOUDINI_EXE@` token is filled from `$HVENVLOADER_HOUDINI_EXE`, falling back to the current interpreter.
 - `nvhp create <name> [path]`: creates an NVHP project folder (same layout as the Create NVHP shelf tool). Flags: `--package-name`, `--env-var`, `--version`, `--description`, `--requires-python`, `--subdirs`, `--no-readme`, `--force`, `--sync`.
 - `nvhp export <package_dir> <export_dir>`: exports an NVHP to a vanilla Houdini Package layout. Flag: `--force`.
-- `launcher write [path]`: writes `houdini.bat` / `houdini.sh` from the bundled template (always overwrites). Flag: `--hvenvloader`.
+- `launcher write [path]`: writes `houdini.bat` / `houdini.sh` from the user template when present, otherwise the bundled template (always overwrites the project launcher). Flag: `--hvenvloader`.
 - `uv [path] <uv args...>`: runs `uv` in the project directory and streams output.
 
 Prefer the CLI over the shelf tools when Houdini is not running (CI, script-based setup). It shares the same implementation functions as the shelf tools; do not duplicate that logic.

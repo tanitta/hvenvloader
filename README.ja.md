@@ -76,6 +76,15 @@ python -m hvenvloader uv /path/to/project add numpy  # プロジェクトディ�
 
 ## Launcher の挙動
 
+Windowsのランチャーテンプレートを自分で変更したい場合は、**hvenvloader本体のディレクトリ**にある
+`houdini.bat` を同じ場所へ `houdini.user.bat` という名前でコピーして編集してください。
+shelfとCLIのランチャー生成は、`houdini.user.bat` があれば優先し、無ければ標準の `houdini.bat` を使用します。
+プロジェクトへの出力名は常に `houdini.bat` です。`@HOUDINI_EXE@`、`@HOUDINI_USER_PREF_DIR@`、
+`@HVENVLOADER@` は標準テンプレートと同様に置換されます。変更を既存プロジェクトに反映するには
+`venv > uv > Write Houdini launcher` または `python -m hvenvloader launcher write <project>` で再生成してください。
+Linux/macOSでは同じ場所に `houdini.user.sh` を置くと標準の `houdini.sh` より優先され、
+プロジェクトには `houdini.sh` として出力されます。両方のユーザー定義テンプレートはGit管理の対象外です。
+
 `houdini.bat` と `houdini.sh` は project root 用の launcher です。次のような directory layout を想定しています。
 
 ```text
